@@ -95,12 +95,12 @@ export class ProvisioningService {
 
   private async databaseExists(client: Client, databaseName: string) {
     const result = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [databaseName]);
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   private async roleExists(client: Client, roleName: string) {
     const result = await client.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [roleName]);
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   private async cleanupFailedProvision(client: Client, databaseName: string, databaseUser: string) {

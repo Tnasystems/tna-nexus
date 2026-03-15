@@ -20,3 +20,4 @@ The full manual fallback guide remains in [DEPLOYMENT.md](C:\Users\m1x3d\OneDriv
 Notes:
 - rerunning the script is generally safe for the same server and domain
 - if DNS is not live yet, use `ENABLE_HTTPS=no` first, then run Certbot later
+- the installer now builds `shared`, generates Prisma clients, and links the generated API clients into the runtime `dist` path before starting services

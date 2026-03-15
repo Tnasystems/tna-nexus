@@ -159,18 +159,28 @@ This creates:
 ```bash
 cd /var/www/tna-nexus
 pnpm --filter @tna-nexus/shared build
+pnpm --filter @tna-nexus/api prisma:generate
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
 ```
 
-## 15. Install Nginx
+## 15. Link Prisma runtime clients
+The compiled API expects generated Prisma clients inside the API runtime tree.
+
+```bash
+mkdir -p /var/www/tna-nexus/apps/api/dist/generated
+ln -sfn /var/www/tna-nexus/apps/api/src/generated/platform-client /var/www/tna-nexus/apps/api/dist/generated/platform-client
+ln -sfn /var/www/tna-nexus/apps/api/src/generated/tenant-client /var/www/tna-nexus/apps/api/dist/generated/tenant-client
+```
+
+## 16. Install Nginx
 ```bash
 sudo apt install -y nginx
 sudo systemctl enable nginx
 sudo systemctl start nginx
 ```
 
-## 16. Add the Nginx site config
+## 17. Add the Nginx site config
 Copy the provided file:
 - [tna-nexus.ubuntu.conf](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\packages\config\nginx\tna-nexus.ubuntu.conf)
 
@@ -192,7 +202,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 17. Create systemd services
+## 18. Create systemd services
 Copy the service files:
 - [tna-nexus-api.service](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\packages\config\systemd\tna-nexus-api.service)
 - [tna-nexus-web.service](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\packages\config\systemd\tna-nexus-web.service)
@@ -217,7 +227,7 @@ sudo systemctl status tna-nexus-api
 sudo systemctl status tna-nexus-web
 ```
 
-## 18. Check the app is running
+## 19. Check the app is running
 ```bash
 curl http://127.0.0.1:4000/api/v1/health
 curl http://127.0.0.1:3000
@@ -225,7 +235,7 @@ curl http://127.0.0.1:3000
 
 If both respond, Nginx should now proxy the app from your domain.
 
-## 19. Set up HTTPS with Certbot
+## 20. Set up HTTPS with Certbot
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com -d www.your-domain.com
@@ -239,7 +249,7 @@ Test renewal:
 sudo certbot renew --dry-run
 ```
 
-## 20. First admin login
+## 21. First admin login
 Use the admin credentials from `.env`.
 
 Test login:
@@ -249,7 +259,7 @@ curl -X POST https://your-domain.com/api/v1/auth/login \
   -d '{"email":"admin@your-domain.com","password":"ChangeThisAdminPassword123!"}'
 ```
 
-## 21. Create your first real tenant/company
+## 22. Create your first real tenant/company
 Take the access token from the login response and run:
 ```bash
 curl -X POST https://your-domain.com/api/v1/tenants \
@@ -267,7 +277,7 @@ curl -X POST https://your-domain.com/api/v1/tenants \
   }'
 ```
 
-## 22. Where to view logs
+## 23. Where to view logs
 API logs:
 ```bash
 sudo journalctl -u tna-nexus-api -f
@@ -284,32 +294,40 @@ sudo tail -f /var/log/nginx/access.log
 sudo tail -f /var/log/nginx/error.log
 ```
 
-## 23. How to restart after changes
+## 24. How to restart after changes
 ```bash
 cd /var/www/tna-nexus
 pnpm install
-pnpm prisma:generate
+pnpm --filter @tna-nexus/shared build
+pnpm --filter @tna-nexus/api prisma:generate
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
+mkdir -p /var/www/tna-nexus/apps/api/dist/generated
+ln -sfn /var/www/tna-nexus/apps/api/src/generated/platform-client /var/www/tna-nexus/apps/api/dist/generated/platform-client
+ln -sfn /var/www/tna-nexus/apps/api/src/generated/tenant-client /var/www/tna-nexus/apps/api/dist/generated/tenant-client
 sudo systemctl restart tna-nexus-api
 sudo systemctl restart tna-nexus-web
 sudo systemctl reload nginx
 ```
 
-## 24. How to update later
+## 25. How to update later
 ```bash
 cd /var/www/tna-nexus
 git pull
 pnpm install
-pnpm prisma:generate
+pnpm --filter @tna-nexus/shared build
+pnpm --filter @tna-nexus/api prisma:generate
 pnpm prisma:migrate:platform
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
+mkdir -p /var/www/tna-nexus/apps/api/dist/generated
+ln -sfn /var/www/tna-nexus/apps/api/src/generated/platform-client /var/www/tna-nexus/apps/api/dist/generated/platform-client
+ln -sfn /var/www/tna-nexus/apps/api/src/generated/tenant-client /var/www/tna-nexus/apps/api/dist/generated/tenant-client
 sudo systemctl restart tna-nexus-api
 sudo systemctl restart tna-nexus-web
 ```
 
-## 25. Backups
+## 26. Backups
 Create a backup:
 ```bash
 bash /var/www/tna-nexus/packages/config/scripts/backup-postgres.sh
@@ -325,7 +343,7 @@ Important:
 - each tenant DB should also be backed up with the same `pg_dump` pattern
 - keep upload folder backups too
 
-## 26. Troubleshooting
+## 27. Troubleshooting
 If the API will not start:
 ```bash
 sudo journalctl -u tna-nexus-api -n 100 --no-pager
@@ -351,7 +369,7 @@ If the site loads but API calls fail:
 - check that API is listening on port `4000`
 - check that Nginx proxies `/api/` to `127.0.0.1:4000`
 
-## 27. Quick command list
+## 28. Quick command list
 ```bash
 sudo systemctl restart tna-nexus-api
 sudo systemctl restart tna-nexus-web

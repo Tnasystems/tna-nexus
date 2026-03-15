@@ -133,19 +133,19 @@ chmod -R 755 /var/www/tna-nexus/uploads
 ## 11. Generate Prisma clients
 ```bash
 cd /var/www/tna-nexus
-pnpm prisma:generate
+pnpm --filter @tna-nexus/api prisma:generate
 ```
 
 ## 12. Run the platform database migration
 ```bash
 cd /var/www/tna-nexus
-pnpm prisma:migrate:platform
+pnpm --filter @tna-nexus/api prisma:migrate:platform
 ```
 
 ## 13. Seed the first admin and demo tenant
 ```bash
 cd /var/www/tna-nexus
-pnpm seed
+pnpm --filter @tna-nexus/api seed
 ```
 
 This creates:
@@ -200,6 +200,7 @@ sudo ln -s /etc/nginx/sites-available/tna-nexus /etc/nginx/sites-enabled/tna-nex
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl reload nginx
+sudo ufw allow 'Nginx Full'
 ```
 
 ## 18. Create systemd services
@@ -317,7 +318,7 @@ git pull
 pnpm install
 pnpm --filter @tna-nexus/shared build
 pnpm --filter @tna-nexus/api prisma:generate
-pnpm prisma:migrate:platform
+pnpm --filter @tna-nexus/api prisma:migrate:platform
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
 mkdir -p /var/www/tna-nexus/apps/api/dist/generated

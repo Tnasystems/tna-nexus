@@ -21,6 +21,28 @@ JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET:-}"
 TENANT_CREDENTIAL_SECRET="${TENANT_CREDENTIAL_SECRET:-}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-yes}"
 
+wait_for_http() {
+  local url="$1"
+  local attempts="${2:-30}"
+  local delay="${3:-2}"
+
+  for ((i=1; i<=attempts; i++)); do
+    if curl --silent --show-error --fail "${url}" > /dev/null; then
+      return 0
+    fi
+    sleep "${delay}"
+  done
+
+  return 1
+}
+
+print_service_logs() {
+  local service="$1"
+  echo
+  echo "Recent logs for ${service}:"
+  sudo journalctl -u "${service}" -n 80 --no-pager || true
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -89,6 +111,11 @@ sudo systemctl enable nginx
 sudo systemctl start nginx
 
 echo "Preparing install directory..."
+if ! id -u "${APP_USER}" >/dev/null 2>&1; then
+  echo "Creating app user ${APP_USER}..."
+  sudo useradd --system --create-home --shell /bin/bash "${APP_USER}"
+fi
+
 sudo mkdir -p "${INSTALL_DIR}"
 sudo chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}"
 rsync -a --delete --exclude .git --exclude node_modules --exclude .next --exclude dist "${REPO_ROOT}/" "${INSTALL_DIR}/"
@@ -102,10 +129,15 @@ if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'tna_
 fi
 
 echo "Writing environment file..."
+APP_SCHEME="http"
+if [[ "${ENABLE_HTTPS}" == "yes" ]]; then
+  APP_SCHEME="https"
+fi
+
 cat > "${INSTALL_DIR}/.env" <<EOF
 NODE_ENV=production
-APP_URL=https://${DOMAIN}
-API_URL=https://${DOMAIN}
+APP_URL=${APP_SCHEME}://${DOMAIN}
+API_URL=${APP_SCHEME}://${DOMAIN}
 PLATFORM_DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/tna_platform?schema=public
 JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
@@ -169,16 +201,42 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl reload nginx
 
+if command -v ufw >/dev/null 2>&1; then
+  if sudo ufw status | grep -q "Status: active"; then
+    echo "Opening firewall for Nginx..."
+    sudo ufw allow 'Nginx Full' || true
+  fi
+fi
+
 if [[ "${ENABLE_HTTPS}" == "yes" ]]; then
   echo "Requesting HTTPS certificate..."
   sudo certbot --nginx -d "${DOMAIN}" -d "${WWW_DOMAIN}" --non-interactive --agree-tos -m "${ADMIN_EMAIL}" --redirect || true
 fi
 
+echo "Waiting for API health check..."
+if ! wait_for_http "http://127.0.0.1:4000/api/v1/health" 30 2; then
+  echo "API failed health check after install."
+  print_service_logs "tna-nexus-api"
+  exit 1
+fi
+
+echo "Waiting for web app..."
+if ! wait_for_http "http://127.0.0.1:3000" 30 2; then
+  echo "Web app failed health check after install."
+  print_service_logs "tna-nexus-web"
+  exit 1
+fi
+
+PUBLIC_URL="http://${DOMAIN}"
+if [[ "${ENABLE_HTTPS}" == "yes" ]]; then
+  PUBLIC_URL="https://${DOMAIN}"
+fi
+
 echo
 echo "Installation complete."
-echo "Site: https://${DOMAIN}"
+echo "Site: ${PUBLIC_URL}"
 echo "Admin email: ${ADMIN_EMAIL}"
-echo "API health: https://${DOMAIN}/api/v1/health"
+echo "API health: ${PUBLIC_URL}/api/v1/health"
 echo
 echo "Useful checks:"
 echo "  sudo systemctl status tna-nexus-api"

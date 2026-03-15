@@ -20,4 +20,6 @@ The full manual fallback guide remains in [DEPLOYMENT.md](C:\Users\m1x3d\OneDriv
 Notes:
 - rerunning the script is generally safe for the same server and domain
 - if DNS is not live yet, use `ENABLE_HTTPS=no` first, then run Certbot later
-- the installer now builds `shared`, generates Prisma clients, and links the generated API clients into the runtime `dist` path before starting services
+- the installer now builds `shared`, generates Prisma clients, migrates and seeds the platform DB, and links the generated API clients into the runtime `dist` path before starting services
+- the installer waits for both `http://127.0.0.1:4000/api/v1/health` and `http://127.0.0.1:3000` before reporting success
+- if `ufw` is active, the installer opens `Nginx Full`

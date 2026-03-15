@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String           @id
+  email          String           @unique
+  fullName       String
+  role           String
+  passwordHash   String
+  phone          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  timesheets     TimesheetEntry[]
+}
+
+model Job {
+  id           String   @id
+  title        String
+  siteAddress  String
+  status       String
+  scheduledFor DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tasks        Task[]
+}
+
+model Task {
+  id        String   @id
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title     String
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FormDefinition {
+  id         String   @id
+  name       String
+  version    Int
+  schemaJson String
+  createdAt  DateTime @default(now())
+}
+
+model TimesheetEntry {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt DateTime
+  endedAt   DateTime?
+}
+
+model Asset {
+  id           String   @id
+  name         String
+  serialNumber String
+  createdAt    DateTime @default(now())
+}
+
+model Document {
+  id          String   @id
+  name        String
+  storagePath String
+  mimeType    String
+  createdAt   DateTime @default(now())
+}
+
+model ComplianceRecord {
+  id        String   @id
+  title     String
+  dueDate   DateTime
+  status    String
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id
+  title     String
+  body      String
+  channel   String
+  status    String
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String
+  actorId   String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}

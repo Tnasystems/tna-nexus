@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PLATFORM_DATABASE_URL")
+}
+
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Company {
+  id             String          @id @default(uuid())
+  name           String
+  slug           String          @unique
+  status         CompanyStatus   @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  subscription   Subscription?
+  tenantDatabase TenantDatabase?
+}
+
+model Subscription {
+  id            String             @id @default(uuid())
+  companyId     String             @unique
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planCode      String
+  status        SubscriptionStatus
+  seatsIncluded Int                @default(10)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model TenantDatabase {
+  id                        String   @id @default(uuid())
+  companyId                 String   @unique
+  company                   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  slug                      String   @unique
+  databaseName              String   @unique
+  databaseUser              String
+  databasePasswordEncrypted String
+  host                      String
+  port                      Int
+  ssl                       Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+}
+
+model DemoAccount {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  companyId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model SystemAuditLog {
+  id         String   @id @default(uuid())
+  actorEmail String
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  TRIAL
+}

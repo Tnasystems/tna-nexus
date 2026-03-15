@@ -1,0 +1,17 @@
+{
+  "name": "tna-nexus",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.8.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter @tna-nexus/api --filter @tna-nexus/web dev",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:api": "pnpm --filter @tna-nexus/api test",
+    "prisma:generate": "pnpm --filter @tna-nexus/api prisma:generate",
+    "prisma:migrate:platform": "pnpm --filter @tna-nexus/api prisma:migrate:platform",
+    "prisma:migrate:tenant": "pnpm --filter @tna-nexus/api prisma:migrate:tenant",
+    "seed": "pnpm --filter @tna-nexus/api seed"
+  }
+}

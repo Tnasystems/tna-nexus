@@ -1,20 +1,18 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { login } from "../lib/auth";
 
 export function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tenantSlug, setTenantSlug] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,6 +25,10 @@ export function LoginForm() {
         password,
         tenantSlug: tenantSlug.trim() || undefined
       });
+
+      const redirectTo = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("redirect") || "/dashboard"
+        : "/dashboard";
 
       router.replace(redirectTo);
       router.refresh();

@@ -24,7 +24,8 @@ export default function HomePage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
           <BrandLogo />
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link className="badge" href="/dashboard">Open demo workspace</Link>
+            <Link className="badge" href="/login">Secure sign in</Link>
+            <a className="badge" href="/api/docs">Open API docs</a>
             <Link className="button" href="/dashboard">
               Launch Dashboard
               <ArrowRight size={16} />
@@ -43,6 +44,13 @@ export default function HomePage() {
               TNA-Nexus is a production-ready multi-tenant platform starter for service businesses that need strict data
               isolation, auditable workflows, and a backend that can power both web and native mobile apps later.
             </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <Link className="button" href="/login">
+                Sign In
+                <ArrowRight size={16} />
+              </Link>
+              <a className="button button-subtle" href="/api/docs">Explore API</a>
+            </div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <span className="badge"><Workflow size={14} /> Jobs, tasks, forms, timesheets</span>
               <span className="badge"><ShieldCheck size={14} /> Tenant-safe provisioning</span>
@@ -74,6 +82,22 @@ export default function HomePage() {
             <p style={{ margin: "18px 0 0", lineHeight: 1.6 }}>{pillar.text}</p>
           </article>
         ))}
+      </section>
+
+      <section className="panel" style={{ padding: 24, marginTop: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <div className="badge">Access flow</div>
+            <h2 style={{ marginBottom: 8 }}>Platform admins and tenant users can now sign in from the web app</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Platform admins log in with just email and password. Tenant users add their company slug to reach the correct workspace.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Link className="badge" href="/login">Open login</Link>
+            <Link className="badge" href="/dashboard">Open protected dashboard</Link>
+          </div>
+        </div>
       </section>
     </main>
   );

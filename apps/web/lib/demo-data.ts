@@ -22,3 +22,21 @@ export const forms = [
   { name: "Vehicle Defect Report", version: "v3", usage: "14 submissions" },
   { name: "Completion Sign-off", version: "v2", usage: "29 submissions" }
 ];
+
+export const documents = [
+  { name: "Permit Pack - Manchester Plant", type: "Permit", status: "Ready for crew" },
+  { name: "Emergency Lighting Audit", type: "Inspection", status: "Awaiting signature" },
+  { name: "Service Completion Pack", type: "Handover", status: "Issued" }
+];
+
+export const compliance = [
+  { title: "Fleet checks due this week", status: "3 due", priority: "High" },
+  { title: "Missing RAMS sign-offs", status: "2 open", priority: "Medium" },
+  { title: "Training renewals", status: "6 upcoming", priority: "Planned" }
+];
+
+export const notifications = [
+  { title: "Stock delay for Leeds depot", channel: "Ops", time: "14 min ago" },
+  { title: "Boiler room inspection completed", channel: "Field", time: "32 min ago" },
+  { title: "New compliance reminder batch sent", channel: "Automation", time: "1 hr ago" }
+];

@@ -99,6 +99,7 @@ main {
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -118,10 +119,73 @@ main {
   color: #fff;
   padding: 12px 18px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.button-subtle {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  color: var(--text);
 }
 
 .muted {
   color: var(--muted);
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 24px;
+}
+
+.callout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  padding: 14px 16px;
+  outline: none;
+  font: inherit;
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:focus {
+  border-color: rgba(255, 122, 26, 0.55);
+  box-shadow: 0 0 0 4px rgba(255, 122, 26, 0.12);
+}
+
+.error-banner {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(251, 113, 133, 0.3);
+  background: rgba(251, 113, 133, 0.12);
+  color: #ffd7de;
 }
 
 @media (max-width: 960px) {
@@ -131,6 +195,10 @@ main {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auth-grid {
+    grid-template-columns: 1fr;
   }
 }
 

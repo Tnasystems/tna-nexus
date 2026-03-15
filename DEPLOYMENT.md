@@ -11,6 +11,12 @@ cd tna-nexus
 DOMAIN=your-domain.com ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeThisNow123!' bash packages/config/scripts/install-ubuntu.sh
 ```
 
+If you want to wipe the install and retry on the same server:
+```bash
+cd tna-nexus
+APP_USER=$USER bash packages/config/scripts/purge-ubuntu.sh
+```
+
 Short installer notes are in [INSTALL.md](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\INSTALL.md).
 
 The rest of this file is the manual step-by-step fallback path.
@@ -369,6 +375,12 @@ If the site loads but API calls fail:
 - check `.env`
 - check that API is listening on port `4000`
 - check that Nginx proxies `/api/` to `127.0.0.1:4000`
+
+If you want to remove the install and start over on the same server:
+```bash
+cd /var/www/tna-nexus
+APP_USER=$USER bash packages/config/scripts/purge-ubuntu.sh
+```
 
 ## 28. Quick command list
 ```bash

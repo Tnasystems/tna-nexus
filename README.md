@@ -34,6 +34,12 @@ cd tna-nexus
 DOMAIN=your-domain.com ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeThisNow123!' APP_USER=$USER bash packages/config/scripts/install-ubuntu.sh
 ```
 
+Reset the server install without reinstalling Ubuntu:
+```bash
+cd tna-nexus
+APP_USER=$USER bash packages/config/scripts/purge-ubuntu.sh
+```
+
 Repository clone pattern:
 ```bash
 git clone https://github.com/Tnasystems/tna-nexus.git

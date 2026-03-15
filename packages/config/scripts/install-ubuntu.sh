@@ -136,9 +136,9 @@ mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/backups"
 
 echo "Installing app dependencies..."
 pnpm install
-pnpm prisma:generate
-pnpm prisma:migrate:platform
-pnpm seed
+pnpm --filter @tna-nexus/api prisma:generate
+pnpm --filter @tna-nexus/api prisma:migrate:platform
+pnpm --filter @tna-nexus/api seed
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
 

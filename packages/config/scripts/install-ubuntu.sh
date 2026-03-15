@@ -96,16 +96,10 @@ rsync -a --delete --exclude .git --exclude node_modules --exclude .next --exclud
 cd "${INSTALL_DIR}"
 
 echo "Configuring PostgreSQL..."
-sudo -u postgres psql <<EOF
-ALTER USER postgres WITH PASSWORD '${POSTGRES_PASSWORD}';
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'tna_platform') THEN
-    CREATE DATABASE tna_platform OWNER postgres;
-  END IF;
-END
-\$\$;
-EOF
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '${POSTGRES_PASSWORD}';"
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'tna_platform'" | grep -q 1; then
+  sudo -u postgres createdb -O postgres tna_platform
+fi
 
 echo "Writing environment file..."
 cat > "${INSTALL_DIR}/.env" <<EOF

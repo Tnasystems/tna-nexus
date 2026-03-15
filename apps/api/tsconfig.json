@@ -6,13 +6,28 @@
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "allowJs": true,
+    "allowJs": false,
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "incremental": true
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@tna-nexus/shared": [
+        "../../packages/shared/src"
+      ],
+      "@tna-nexus/shared/*": [
+        "../../packages/shared/src/*"
+      ]
+    }
   },
   "include": [
     "src/**/*"
+  ],
+  "exclude": [
+    "src/generated/**/*.js",
+    "src/generated/**/*.js.map",
+    "dist",
+    "node_modules"
   ]
 }

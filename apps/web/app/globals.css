@@ -133,6 +133,11 @@ main {
   color: var(--text);
 }
 
+.button-danger {
+  background: linear-gradient(135deg, #c9314b 0%, #fb7185 100%);
+  color: #fff;
+}
+
 .muted {
   color: var(--muted);
 }

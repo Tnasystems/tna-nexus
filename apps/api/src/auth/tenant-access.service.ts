@@ -30,6 +30,10 @@ export class TenantAccessService {
       where: { id: user.companyId }
     });
 
+    if (company.status === "SUSPENDED") {
+      throw new ForbiddenException("This company is suspended.");
+    }
+
     return {
       company,
       prisma: this.tenantFactory.getClient(
@@ -47,6 +51,10 @@ export class TenantAccessService {
     const company = await this.platformPrisma.company.findUniqueOrThrow({
       where: { id: metadata.companyId }
     });
+
+    if (company.status === "SUSPENDED") {
+      throw new ForbiddenException("This company is suspended.");
+    }
 
     return {
       company,

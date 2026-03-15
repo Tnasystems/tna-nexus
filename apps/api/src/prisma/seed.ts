@@ -72,9 +72,12 @@ async function main() {
       data: {
         id: jobId,
         title: "Quarterly inspection run",
+        companyJobNumber: "TNA-DEMO-0001",
+        customerJobNumber: "CUST-DEMO-4812",
         siteAddress: "10 Foundry Way, Birmingham",
         status: "SCHEDULED",
-        scheduledFor: new Date()
+        scheduledFor: new Date(),
+        assignedOperativeIds: [ownerId]
       }
     });
 

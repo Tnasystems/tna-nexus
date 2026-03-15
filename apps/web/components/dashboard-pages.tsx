@@ -129,6 +129,7 @@ export function AdminDashboardPage() {
   const [companies, setCompanies] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [busyCompanyId, setBusyCompanyId] = useState<string | null>(null);
   const [form, setForm] = useState({
     companyName: "",
     slug: "",
@@ -201,6 +202,28 @@ export function AdminDashboardPage() {
     }
   }
 
+  async function handleCompanyAction(companyId: string, action: "suspend" | "activate" | "delete") {
+    setError(null);
+    setSuccess(null);
+    setBusyCompanyId(companyId);
+
+    try {
+      if (action === "delete") {
+        await apiRequest(`platform-admin/companies/${companyId}`, { method: "DELETE" });
+        setSuccess("Company deleted successfully.");
+      } else {
+        await apiRequest(`platform-admin/companies/${companyId}/${action}`, { method: "PATCH" });
+        setSuccess(action === "suspend" ? "Company suspended successfully." : "Company re-enabled successfully.");
+      }
+
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Company action failed.");
+    } finally {
+      setBusyCompanyId(null);
+    }
+  }
+
   return (
     <ProtectedWorkspace allow="admin" description="Manage companies, subscriptions, and tenant provisioning." title="Platform Admin">
       {() => (
@@ -241,7 +264,38 @@ export function AdminDashboardPage() {
                 {companies.map((company) => (
                   <div key={String(company.id)} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
                     <div style={{ fontWeight: 700 }}>{String(company.name)}</div>
-                    <div className="muted">{String(company.slug)}</div>
+                    <div className="muted">
+                      {String(company.slug)} - {String(company.status ?? "UNKNOWN")}
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      {String(company.status) === "SUSPENDED" ? (
+                        <button
+                          className="button button-subtle"
+                          disabled={busyCompanyId === String(company.id)}
+                          onClick={() => void handleCompanyAction(String(company.id), "activate")}
+                          type="button"
+                        >
+                          Enable
+                        </button>
+                      ) : (
+                        <button
+                          className="button button-subtle"
+                          disabled={busyCompanyId === String(company.id)}
+                          onClick={() => void handleCompanyAction(String(company.id), "suspend")}
+                          type="button"
+                        >
+                          Suspend
+                        </button>
+                      )}
+                      <button
+                        className="button button-danger"
+                        disabled={busyCompanyId === String(company.id)}
+                        onClick={() => void handleCompanyAction(String(company.id), "delete")}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

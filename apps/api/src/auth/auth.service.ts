@@ -62,6 +62,7 @@ export class AuthService {
 
   private async loginWithTenantSlug(email: string, password: string, tenantSlug: string) {
     const { prisma, company } = await this.tenantAccess.getTenantContextBySlug(tenantSlug);
+    this.ensureCompanyCanLogin(company.status);
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user || !(await argon2.verify(user.passwordHash, password))) {
@@ -80,6 +81,9 @@ export class AuthService {
 
   private async findTenantUserByEmail(email: string) {
     const connections = await this.platformPrisma.tenantDatabase.findMany({
+      include: {
+        company: true
+      },
       orderBy: { createdAt: "asc" }
     });
 
@@ -100,6 +104,7 @@ export class AuthService {
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (user) {
+        this.ensureCompanyCanLogin(connection.company.status);
         matches.push({
           companyId: connection.companyId,
           slug: connection.slug,
@@ -130,5 +135,11 @@ export class AuthService {
 
   private toDatabaseUrl(databaseName: string, databaseUser: string, databasePassword: string) {
     return `postgresql://${databaseUser}:${encodeURIComponent(databasePassword)}@${this.config.getOrThrow("POSTGRES_HOST")}:${this.config.getOrThrow<number>("POSTGRES_PORT")}/${databaseName}?schema=public`;
+  }
+
+  private ensureCompanyCanLogin(status: string) {
+    if (status === "SUSPENDED") {
+      throw new UnauthorizedException("This company is suspended. Contact your platform administrator.");
+    }
   }
 }

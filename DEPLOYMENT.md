@@ -217,14 +217,6 @@ sudo systemctl status tna-nexus-api
 sudo systemctl status tna-nexus-web
 ```
 
-If the compiled API cannot find Prisma clients, create the runtime symlinks once:
-```bash
-mkdir -p /var/www/tna-nexus/apps/api/dist/prisma/platform/generated
-mkdir -p /var/www/tna-nexus/apps/api/dist/prisma/tenant/generated
-ln -sfn /var/www/tna-nexus/prisma/platform/generated/client /var/www/tna-nexus/apps/api/dist/prisma/platform/generated/client
-ln -sfn /var/www/tna-nexus/prisma/tenant/generated/client /var/www/tna-nexus/apps/api/dist/prisma/tenant/generated/client
-```
-
 ## 18. Check the app is running
 ```bash
 curl http://127.0.0.1:4000/api/v1/health

@@ -8,14 +8,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
-    "baseUrl": ".",
-    "paths": {
-      "@tna-nexus/shared": [
-        "packages/shared/src"
-      ],
-      "@tna-nexus/shared/*": [
-        "packages/shared/src/*"
-      ]
-    }
+    "baseUrl": "."
   }
 }

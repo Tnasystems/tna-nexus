@@ -10,7 +10,7 @@ WorkingDirectory=/var/www/tna-nexus
 EnvironmentFile=/var/www/tna-nexus/.env
 Environment=NODE_ENV=production
 Environment=PORT=4000
-ExecStart=/usr/bin/node /var/www/tna-nexus/apps/api/dist/apps/api/src/main.js
+ExecStart=/usr/bin/node /var/www/tna-nexus/apps/api/dist/main.js
 Restart=always
 RestartSec=5
 

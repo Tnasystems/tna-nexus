@@ -144,11 +144,6 @@ pnpm --filter @tna-nexus/api seed
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
 
-echo "Linking generated Prisma clients for compiled API runtime..."
-mkdir -p "${INSTALL_DIR}/apps/api/dist/prisma/platform/generated" "${INSTALL_DIR}/apps/api/dist/prisma/tenant/generated"
-ln -sfn "${INSTALL_DIR}/prisma/platform/generated/client" "${INSTALL_DIR}/apps/api/dist/prisma/platform/generated/client"
-ln -sfn "${INSTALL_DIR}/prisma/tenant/generated/client" "${INSTALL_DIR}/apps/api/dist/prisma/tenant/generated/client"
-
 echo "Installing systemd services..."
 sed -e "s/User=tna-nexus/User=${APP_USER}/g" -e "s/Group=tna-nexus/Group=${APP_USER}/g" \
   "${INSTALL_DIR}/packages/config/systemd/tna-nexus-api.service" | sudo tee /etc/systemd/system/tna-nexus-api.service > /dev/null

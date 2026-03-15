@@ -6,13 +6,13 @@
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "allowJs": false,
+    "allowJs": true,
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./src",
     "incremental": true
   },
   "include": [
-    "src/**/*.ts",
-    "../../packages/shared/src/**/*.ts"
+    "src/**/*"
   ]
 }

@@ -10,16 +10,7 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "incremental": true,
-    "baseUrl": ".",
-    "paths": {
-      "@tna-nexus/shared": [
-        "../../packages/shared/src"
-      ],
-      "@tna-nexus/shared/*": [
-        "../../packages/shared/src/*"
-      ]
-    }
+    "incremental": true
   },
   "include": [
     "src/**/*"

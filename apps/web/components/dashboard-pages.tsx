@@ -110,6 +110,7 @@ export function AdminDashboardPage() {
   const [dashboard, setDashboard] = useState<{ companies: number; subscriptions: number; demoAccounts: number; auditLogs: number } | null>(null);
   const [companies, setCompanies] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({
     companyName: "",
     slug: "",
@@ -137,20 +138,49 @@ export function AdminDashboardPage() {
 
   useEffect(() => { void load(); }, []);
 
+  function slugify(value: string) {
+    return value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40);
+  }
+
+  function populateFromCompanyName(value: string) {
+    const slug = slugify(value);
+
+    setForm((current) => ({
+      ...current,
+      companyName: value,
+      slug: current.slug || slug,
+      databaseName: current.databaseName || `tna_tenant_${slug.replace(/-/g, "_")}`,
+      databaseUser: current.databaseUser || `${slug.replace(/-/g, "_").slice(0, 20)}_user`
+    }));
+  }
+
   async function handleCreateTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await apiRequest("tenants", { method: "POST", body: JSON.stringify(form) });
-    setForm({
-      companyName: "",
-      slug: "",
-      planCode: "growth",
-      databaseName: "",
-      databaseUser: "",
-      databasePassword: "",
-      ownerEmail: "",
-      ownerPassword: ""
-    });
-    await load();
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await apiRequest("tenants", { method: "POST", body: JSON.stringify(form) });
+      setForm({
+        companyName: "",
+        slug: "",
+        planCode: "growth",
+        databaseName: "",
+        databaseUser: "",
+        databasePassword: "",
+        ownerEmail: "",
+        ownerPassword: ""
+      });
+      setSuccess("Company workspace created successfully.");
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to create company.");
+    }
   }
 
   return (
@@ -158,6 +188,7 @@ export function AdminDashboardPage() {
       {() => (
         <>
           <ErrorText error={error} />
+          {success ? <div className="panel" style={{ padding: 18, borderRadius: 18 }}>{success}</div> : null}
           <section className="metric-grid">
             {[
               { label: "Companies", value: dashboard?.companies ?? 0 },
@@ -175,7 +206,7 @@ export function AdminDashboardPage() {
             <article className="panel" style={{ padding: 24 }}>
               <h2 style={{ marginTop: 0 }}>Create company workspace</h2>
               <form className="stack" onSubmit={handleCreateTenant}>
-                <TextField label="Company name" onChange={(value) => setForm((current) => ({ ...current, companyName: value }))} value={form.companyName} />
+                <TextField label="Company name" onChange={populateFromCompanyName} value={form.companyName} />
                 <TextField label="Slug" onChange={(value) => setForm((current) => ({ ...current, slug: value }))} value={form.slug} />
                 <TextField label="Plan code" onChange={(value) => setForm((current) => ({ ...current, planCode: value }))} value={form.planCode} />
                 <TextField label="Database name" onChange={(value) => setForm((current) => ({ ...current, databaseName: value }))} value={form.databaseName} />

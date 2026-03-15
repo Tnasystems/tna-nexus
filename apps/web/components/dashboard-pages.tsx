@@ -51,10 +51,10 @@ export function TenantOverviewPage() {
 
   useEffect(() => {
     Promise.all([
-      apiRequest("companies/me"),
-      apiRequest("reporting/summary"),
-      apiRequest("notifications"),
-      apiRequest("compliance")
+      apiRequest<{ company: { name: string; slug: string }; metrics: { users: number; jobs: number; assets: number } }>("companies/me"),
+      apiRequest<{ jobs: number; completedJobs: number; openCompliance: number; activeUsers: number }>("reporting/summary"),
+      apiRequest<Array<{ id: string; title: string; channel: string; status: string }>>("notifications"),
+      apiRequest<Array<{ id: string; title: string; dueDate: string; status: string }>>("compliance")
     ])
       .then(([company, reporting, notifications, compliance]) => setData({ company, reporting, notifications, compliance }))
       .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Failed to load dashboard."));

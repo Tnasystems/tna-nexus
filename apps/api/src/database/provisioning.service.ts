@@ -59,7 +59,7 @@ export class ProvisioningService {
         databaseUser: input.databaseUser,
         databasePasswordEncrypted: this.secretCipher.encrypt(input.databasePassword),
         host: this.config.getOrThrow("POSTGRES_HOST"),
-        port: this.config.getOrThrow<number>("POSTGRES_PORT"),
+        port: Number(this.config.getOrThrow("POSTGRES_PORT")),
         ssl: false
       }
     });
@@ -70,7 +70,7 @@ export class ProvisioningService {
 
   toTenantUrl(input: { databaseName: string; databaseUser: string; databasePassword: string }) {
     const host = this.config.getOrThrow("POSTGRES_HOST");
-    const port = this.config.getOrThrow<number>("POSTGRES_PORT");
+    const port = Number(this.config.getOrThrow("POSTGRES_PORT"));
     return `postgresql://${input.databaseUser}:${encodeURIComponent(input.databasePassword)}@${host}:${port}/${input.databaseName}?schema=public`;
   }
 

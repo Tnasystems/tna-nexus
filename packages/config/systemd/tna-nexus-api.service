@@ -4,13 +4,13 @@ After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
+User=tna-nexus
+Group=tna-nexus
 WorkingDirectory=/var/www/tna-nexus
 EnvironmentFile=/var/www/tna-nexus/.env
 Environment=NODE_ENV=production
 Environment=PORT=4000
-ExecStart=/usr/bin/env pnpm --filter @tna-nexus/api start
+ExecStart=/usr/bin/node /var/www/tna-nexus/apps/api/dist/apps/api/src/main.js
 Restart=always
 RestartSec=5
 

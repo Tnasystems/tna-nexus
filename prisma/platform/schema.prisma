@@ -20,7 +20,7 @@ model Company {
   id             String          @id @default(uuid())
   name           String
   slug           String          @unique
-  status         CompanyStatus   @default(ACTIVE)
+  status         String          @default("ACTIVE")
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   subscription   Subscription?
@@ -28,14 +28,14 @@ model Company {
 }
 
 model Subscription {
-  id            String             @id @default(uuid())
-  companyId     String             @unique
-  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  companyId     String   @unique
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   planCode      String
-  status        SubscriptionStatus
-  seatsIncluded Int                @default(10)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  status        String
+  seatsIncluded Int      @default(10)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model TenantDatabase {
@@ -66,17 +66,4 @@ model SystemAuditLog {
   action     String
   metadata   Json?
   createdAt  DateTime @default(now())
-}
-
-enum CompanyStatus {
-  ACTIVE
-  SUSPENDED
-  TRIAL
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  PAST_DUE
-  CANCELLED
-  TRIAL
 }

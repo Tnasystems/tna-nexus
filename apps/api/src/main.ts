@@ -16,9 +16,9 @@ async function bootstrap() {
   );
   const config = app.get(ConfigService);
 
-  await app.register(cookie);
-  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
-  await app.register(staticFiles, {
+  await app.register(cookie as never);
+  await app.register(multipart as never, { limits: { fileSize: 10 * 1024 * 1024 } });
+  await app.register(staticFiles as never, {
     root: join(process.cwd(), config.getOrThrow<string>("UPLOAD_ROOT")),
     prefix: "/uploads/"
   });

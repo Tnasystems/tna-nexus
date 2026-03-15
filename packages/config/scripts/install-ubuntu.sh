@@ -9,6 +9,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 INSTALL_DIR="${INSTALL_DIR:-/var/www/tna-nexus}"
+APP_USER="${APP_USER:-$USER}"
 DOMAIN="${DOMAIN:-}"
 WWW_DOMAIN="${WWW_DOMAIN:-}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-}"
@@ -89,7 +90,7 @@ sudo systemctl start nginx
 
 echo "Preparing install directory..."
 sudo mkdir -p "${INSTALL_DIR}"
-sudo chown -R "${USER}:${USER}" "${INSTALL_DIR}"
+sudo chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}"
 rsync -a --delete --exclude .git --exclude node_modules --exclude .next --exclude dist "${REPO_ROOT}/" "${INSTALL_DIR}/"
 
 cd "${INSTALL_DIR}"
@@ -136,16 +137,24 @@ mkdir -p "${INSTALL_DIR}/uploads" "${INSTALL_DIR}/backups"
 
 echo "Installing app dependencies..."
 pnpm install
+pnpm --filter @tna-nexus/shared build
 pnpm --filter @tna-nexus/api prisma:generate
 pnpm --filter @tna-nexus/api prisma:migrate:platform
 pnpm --filter @tna-nexus/api seed
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
 
+echo "Linking generated Prisma clients for compiled API runtime..."
+mkdir -p "${INSTALL_DIR}/apps/api/dist/prisma/platform/generated" "${INSTALL_DIR}/apps/api/dist/prisma/tenant/generated"
+ln -sfn "${INSTALL_DIR}/prisma/platform/generated/client" "${INSTALL_DIR}/apps/api/dist/prisma/platform/generated/client"
+ln -sfn "${INSTALL_DIR}/prisma/tenant/generated/client" "${INSTALL_DIR}/apps/api/dist/prisma/tenant/generated/client"
+
 echo "Installing systemd services..."
-sudo cp "${INSTALL_DIR}/packages/config/systemd/tna-nexus-api.service" /etc/systemd/system/tna-nexus-api.service
-sudo cp "${INSTALL_DIR}/packages/config/systemd/tna-nexus-web.service" /etc/systemd/system/tna-nexus-web.service
-sudo chown -R www-data:www-data "${INSTALL_DIR}"
+sed -e "s/User=tna-nexus/User=${APP_USER}/g" -e "s/Group=tna-nexus/Group=${APP_USER}/g" \
+  "${INSTALL_DIR}/packages/config/systemd/tna-nexus-api.service" | sudo tee /etc/systemd/system/tna-nexus-api.service > /dev/null
+sed -e "s/User=tna-nexus/User=${APP_USER}/g" -e "s/Group=tna-nexus/Group=${APP_USER}/g" \
+  "${INSTALL_DIR}/packages/config/systemd/tna-nexus-web.service" | sudo tee /etc/systemd/system/tna-nexus-web.service > /dev/null
+sudo chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}"
 sudo chmod -R 755 "${INSTALL_DIR}"
 sudo systemctl daemon-reload
 sudo systemctl enable tna-nexus-api

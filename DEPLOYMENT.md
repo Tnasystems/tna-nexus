@@ -158,6 +158,7 @@ This creates:
 ## 14. Build the app
 ```bash
 cd /var/www/tna-nexus
+pnpm --filter @tna-nexus/shared build
 pnpm --filter @tna-nexus/api build
 pnpm --filter @tna-nexus/web build
 ```
@@ -198,9 +199,10 @@ Copy the service files:
 
 Commands:
 ```bash
+sudo useradd --system --create-home --shell /bin/bash tna-nexus || true
+sudo chown -R tna-nexus:tna-nexus /var/www/tna-nexus
 sudo cp /var/www/tna-nexus/packages/config/systemd/tna-nexus-api.service /etc/systemd/system/
 sudo cp /var/www/tna-nexus/packages/config/systemd/tna-nexus-web.service /etc/systemd/system/
-sudo chown -R www-data:www-data /var/www/tna-nexus
 sudo chmod -R 755 /var/www/tna-nexus
 sudo systemctl daemon-reload
 sudo systemctl enable tna-nexus-api
@@ -213,6 +215,14 @@ Check status:
 ```bash
 sudo systemctl status tna-nexus-api
 sudo systemctl status tna-nexus-web
+```
+
+If the compiled API cannot find Prisma clients, create the runtime symlinks once:
+```bash
+mkdir -p /var/www/tna-nexus/apps/api/dist/prisma/platform/generated
+mkdir -p /var/www/tna-nexus/apps/api/dist/prisma/tenant/generated
+ln -sfn /var/www/tna-nexus/prisma/platform/generated/client /var/www/tna-nexus/apps/api/dist/prisma/platform/generated/client
+ln -sfn /var/www/tna-nexus/prisma/tenant/generated/client /var/www/tna-nexus/apps/api/dist/prisma/tenant/generated/client
 ```
 
 ## 18. Check the app is running

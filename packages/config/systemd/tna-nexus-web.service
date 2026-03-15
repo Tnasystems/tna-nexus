@@ -4,13 +4,13 @@ After=network.target tna-nexus-api.service
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
-WorkingDirectory=/var/www/tna-nexus
+User=tna-nexus
+Group=tna-nexus
+WorkingDirectory=/var/www/tna-nexus/apps/web
 EnvironmentFile=/var/www/tna-nexus/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
-ExecStart=/usr/bin/env pnpm --filter @tna-nexus/web start
+ExecStart=/usr/bin/node /var/www/tna-nexus/apps/web/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
 Restart=always
 RestartSec=5
 

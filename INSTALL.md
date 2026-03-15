@@ -12,7 +12,7 @@ DOMAIN=your-domain.com ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeT
 Optional:
 
 ```bash
-WWW_DOMAIN=www.your-domain.com POSTGRES_PASSWORD='StrongPostgresPassword123!' ENABLE_HTTPS=no bash packages/config/scripts/install-ubuntu.sh
+WWW_DOMAIN=www.your-domain.com POSTGRES_PASSWORD='StrongPostgresPassword123!' ENABLE_HTTPS=no APP_USER=$USER bash packages/config/scripts/install-ubuntu.sh
 ```
 
 The full manual fallback guide remains in [DEPLOYMENT.md](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\DEPLOYMENT.md).

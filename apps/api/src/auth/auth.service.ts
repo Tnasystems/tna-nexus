@@ -5,6 +5,8 @@ import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
 import type { JwtUser, Role } from "@tna-nexus/shared";
 import { PlatformPrismaService } from "../database/platform-prisma.service";
+import { SecretCipherService } from "../database/secret-cipher.service";
+import { TenantPrismaFactory } from "../database/tenant-prisma.factory";
 import { SessionService } from "./session.service";
 import { TenantAccessService } from "./tenant-access.service";
 
@@ -15,16 +17,14 @@ export class AuthService {
     private readonly tenantAccess: TenantAccessService,
     private readonly sessionService: SessionService,
     private readonly jwtService: JwtService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly tenantFactory: TenantPrismaFactory,
+    private readonly secretCipher: SecretCipherService
   ) {}
 
   async login(email: string, password: string, tenantSlug?: string) {
-    if (!tenantSlug) {
-      const admin = await this.platformPrisma.platformAdmin.findUnique({ where: { email } });
-      if (!admin || !(await argon2.verify(admin.passwordHash, password))) {
-        throw new UnauthorizedException("Invalid credentials.");
-      }
-
+    const admin = await this.platformPrisma.platformAdmin.findUnique({ where: { email } });
+    if (admin && await argon2.verify(admin.passwordHash, password)) {
       return this.issueTokens({
         sub: admin.id,
         email: admin.email,
@@ -33,11 +33,39 @@ export class AuthService {
       });
     }
 
+    if (tenantSlug) {
+      const tenantMatch = await this.loginWithTenantSlug(email, password, tenantSlug);
+      if (tenantMatch) {
+        return tenantMatch;
+      }
+    }
+
+    const tenantUser = await this.findTenantUserByEmail(email);
+    if (!tenantUser || !(await argon2.verify(tenantUser.user.passwordHash, password))) {
+      throw new UnauthorizedException("Invalid credentials.");
+    }
+
+    return this.issueTokens({
+      sub: tenantUser.user.id,
+      email: tenantUser.user.email,
+      role: tenantUser.user.role as Role,
+      companyId: tenantUser.companyId,
+      tenantSlug: tenantUser.slug,
+      sessionId: randomUUID()
+    });
+  }
+
+  async refresh(refreshToken: string) {
+    const payload = await this.sessionService.verifyRefreshToken(refreshToken);
+    return this.issueTokens(payload, payload.sessionId);
+  }
+
+  private async loginWithTenantSlug(email: string, password: string, tenantSlug: string) {
     const { prisma, company } = await this.tenantAccess.getTenantContextBySlug(tenantSlug);
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user || !(await argon2.verify(user.passwordHash, password))) {
-      throw new UnauthorizedException("Invalid credentials.");
+      return null;
     }
 
     return this.issueTokens({
@@ -50,9 +78,41 @@ export class AuthService {
     });
   }
 
-  async refresh(refreshToken: string) {
-    const payload = await this.sessionService.verifyRefreshToken(refreshToken);
-    return this.issueTokens(payload, payload.sessionId);
+  private async findTenantUserByEmail(email: string) {
+    const connections = await this.platformPrisma.tenantDatabase.findMany({
+      orderBy: { createdAt: "asc" }
+    });
+
+    const matches: Array<{
+      companyId: string;
+      slug: string;
+      user: { id: string; email: string; role: string; passwordHash: string };
+    }> = [];
+
+    for (const connection of connections) {
+      const prisma = this.tenantFactory.getClient(
+        this.toDatabaseUrl(
+          connection.databaseName,
+          connection.databaseUser,
+          this.secretCipher.decrypt(connection.databasePasswordEncrypted)
+        )
+      );
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (user) {
+        matches.push({
+          companyId: connection.companyId,
+          slug: connection.slug,
+          user
+        });
+      }
+    }
+
+    if (matches.length > 1) {
+      throw new UnauthorizedException("This email belongs to multiple companies. Use a unique email per company account.");
+    }
+
+    return matches[0] ?? null;
   }
 
   private async issueTokens(user: JwtUser, existingSessionId?: string) {
@@ -66,5 +126,9 @@ export class AuthService {
       refreshToken,
       expiresIn: this.config.getOrThrow("ACCESS_TOKEN_TTL")
     };
+  }
+
+  private toDatabaseUrl(databaseName: string, databaseUser: string, databasePassword: string) {
+    return `postgresql://${databaseUser}:${encodeURIComponent(databasePassword)}@${this.config.getOrThrow("POSTGRES_HOST")}:${this.config.getOrThrow<number>("POSTGRES_PORT")}/${databaseName}?schema=public`;
   }
 }

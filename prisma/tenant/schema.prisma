@@ -21,14 +21,17 @@ model User {
 }
 
 model Job {
-  id           String   @id
-  title        String
-  siteAddress  String
-  status       String
-  scheduledFor DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tasks        Task[]
+  id                  String   @id
+  title               String
+  companyJobNumber    String
+  customerJobNumber   String
+  siteAddress         String
+  status              String
+  scheduledFor        DateTime?
+  assignedOperativeIds String[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  tasks               Task[]
 }
 
 model Task {

@@ -40,6 +40,24 @@ function TextAreaField({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  onChange,
+  options
+}: Readonly<{ label: string; value: string; onChange: (value: string) => void; options: string[] }>) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select className="input" onChange={(event) => onChange(event.target.value)} value={value}>
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function TenantOverviewPage() {
   const [data, setData] = useState<{
     company?: { company: { name: string; slug: string }; metrics: { users: number; jobs: number; assets: number } };
@@ -305,53 +323,176 @@ function createCrudPage(config: {
   };
 }
 
-export const JobsPage = createCrudPage({
-  title: "Jobs",
-  description: "Create and track operational jobs across sites.",
-  path: "jobs",
-  initialData: {
+export function JobsPage() {
+  const [jobs, setJobs] = useState<Array<Record<string, unknown>>>([]);
+  const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
     title: "",
+    companyJobNumber: "",
+    customerJobNumber: "",
     siteAddress: "",
     status: JOB_STATUS_VALUES[1],
-    scheduledFor: ""
-  },
-  fields: [
-    { key: "title", label: "Title" },
-    { key: "siteAddress", label: "Site address" },
-    { key: "status", label: "Status" },
-    { key: "scheduledFor", label: "Scheduled for", type: "datetime-local" }
-  ],
-  list: (item) => (
-    <>
-      <div style={{ fontWeight: 700 }}>{String(item.title)}</div>
-      <div className="muted">{String(item.siteAddress)} - {String(item.status || JOB_STATUS_VALUES[1])}</div>
-    </>
-  )
-});
+    scheduledFor: "",
+    assignedOperativeIds: [] as string[]
+  });
 
-export const UsersPage = createCrudPage({
-  title: "Users",
-  description: "Manage company users and role access.",
-  path: "users",
-  initialData: {
+  async function load() {
+    try {
+      const [nextJobs, nextUsers] = await Promise.all([
+        apiRequest<Array<Record<string, unknown>>>("jobs"),
+        apiRequest<Array<Record<string, unknown>>>("users")
+      ]);
+      setJobs(nextJobs);
+      setUsers(nextUsers);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to load jobs.");
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  function toggleOperative(userId: string) {
+    setForm((current) => ({
+      ...current,
+      assignedOperativeIds: current.assignedOperativeIds.includes(userId)
+        ? current.assignedOperativeIds.filter((id) => id !== userId)
+        : [...current.assignedOperativeIds, userId]
+    }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await apiRequest("jobs", { method: "POST", body: JSON.stringify(form) });
+    setForm({
+      title: "",
+      companyJobNumber: "",
+      customerJobNumber: "",
+      siteAddress: "",
+      status: JOB_STATUS_VALUES[1],
+      scheduledFor: "",
+      assignedOperativeIds: []
+    });
+    await load();
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Create and track operational jobs across sites." title="Jobs">
+      {() => (
+        <PanelGrid>
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>Create job</h2>
+            <form className="stack" onSubmit={handleSubmit}>
+              <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
+              <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
+              <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
+              <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
+              <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
+              <TextField label="Scheduled for" onChange={(value) => setForm((current) => ({ ...current, scheduledFor: value }))} type="datetime-local" value={form.scheduledFor} />
+              <div className="field">
+                <span>Assign operatives</span>
+                <div className="stack" style={{ gap: 10 }}>
+                  {users.map((user) => (
+                    <label key={String(user.id)} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <input
+                        checked={form.assignedOperativeIds.includes(String(user.id))}
+                        onChange={() => toggleOperative(String(user.id))}
+                        type="checkbox"
+                      />
+                      <span>{String(user.fullName)} ({String(user.role)})</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <button className="button" type="submit">Create Job</button>
+            </form>
+            <ErrorText error={error} />
+          </article>
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>Job board</h2>
+            <div className="stack">
+              {jobs.map((job) => (
+                <div key={String(job.id)} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ fontWeight: 700 }}>{String(job.title)}</div>
+                  <div className="muted">
+                    {String(job.companyJobNumber)} / {String(job.customerJobNumber)} - {String(job.status)}
+                  </div>
+                  <div className="muted">{String(job.siteAddress)}</div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </PanelGrid>
+      )}
+    </ProtectedWorkspace>
+  );
+}
+
+export function UsersPage() {
+  const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
     email: "",
     fullName: "",
     role: ROLE_VALUES[1],
     password: ""
-  },
-  fields: [
-    { key: "email", label: "Email", type: "email" },
-    { key: "fullName", label: "Full name" },
-    { key: "role", label: "Role" },
-    { key: "password", label: "Password", type: "password" }
-  ],
-  list: (item) => (
-    <>
-      <div style={{ fontWeight: 700 }}>{String(item.fullName)}</div>
-      <div className="muted">{String(item.email)} - {String(item.role || ROLE_VALUES[1])}</div>
-    </>
-  )
-});
+  });
+
+  async function load() {
+    try {
+      setUsers(await apiRequest<Array<Record<string, unknown>>>("users"));
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to load users.");
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await apiRequest("users", { method: "POST", body: JSON.stringify(form) });
+    setForm({
+      email: "",
+      fullName: "",
+      role: ROLE_VALUES[1],
+      password: ""
+    });
+    await load();
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Manage company users and role access." title="Team">
+      {() => (
+        <PanelGrid>
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>Create user</h2>
+            <form className="stack" onSubmit={handleSubmit}>
+              <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
+              <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+              <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
+              <TextField label="Password" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />
+              <button className="button" type="submit">Create User</button>
+            </form>
+            <ErrorText error={error} />
+          </article>
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>Current users</h2>
+            <div className="stack">
+              {users.map((user) => (
+                <div key={String(user.id)} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ fontWeight: 700 }}>{String(user.fullName)}</div>
+                  <div className="muted">{String(user.email)} - {String(user.role)}</div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </PanelGrid>
+      )}
+    </ProtectedWorkspace>
+  );
+}
 
 export const AssetsPage = createCrudPage({
   title: "Assets",

@@ -1,11 +1,19 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { JOB_STATUS_VALUES } from "@tna-nexus/shared";
-import { IsDateString, IsIn, IsOptional, IsString } from "class-validator";
+import { IsArray, IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 
 export class CreateJobDto {
   @ApiProperty()
   @IsString()
   title!: string;
+
+  @ApiProperty()
+  @IsString()
+  companyJobNumber!: string;
+
+  @ApiProperty()
+  @IsString()
+  customerJobNumber!: string;
 
   @ApiProperty()
   @IsString()
@@ -19,4 +27,10 @@ export class CreateJobDto {
   @IsOptional()
   @IsDateString()
   scheduledFor?: string;
+
+  @ApiProperty({ type: [String], required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  assignedOperativeIds?: string[];
 }

@@ -12,12 +12,23 @@ CREATE TABLE IF NOT EXISTS "User" (
 CREATE TABLE IF NOT EXISTS "Job" (
   "id" TEXT PRIMARY KEY,
   "title" TEXT NOT NULL,
+  "companyJobNumber" TEXT NOT NULL,
+  "customerJobNumber" TEXT NOT NULL,
   "siteAddress" TEXT NOT NULL,
   "status" TEXT NOT NULL,
   "scheduledFor" TIMESTAMP,
+  "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "companyJobNumber" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "customerJobNumber" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+UPDATE "Job" SET "companyJobNumber" = COALESCE("companyJobNumber", "id") WHERE "companyJobNumber" IS NULL;
+UPDATE "Job" SET "customerJobNumber" = COALESCE("customerJobNumber", "id") WHERE "customerJobNumber" IS NULL;
+ALTER TABLE "Job" ALTER COLUMN "companyJobNumber" SET NOT NULL;
+ALTER TABLE "Job" ALTER COLUMN "customerJobNumber" SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "Task" (
   "id" TEXT PRIMARY KEY,

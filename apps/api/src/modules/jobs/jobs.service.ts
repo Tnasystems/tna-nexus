@@ -19,9 +19,12 @@ export class JobsService {
       data: {
         id: randomUUID(),
         title: dto.title,
+        companyJobNumber: dto.companyJobNumber,
+        customerJobNumber: dto.customerJobNumber,
         siteAddress: dto.siteAddress,
         status: dto.status,
-        scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : null
+        scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : null,
+        assignedOperativeIds: dto.assignedOperativeIds ?? []
       }
     });
   }

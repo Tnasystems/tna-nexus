@@ -29,28 +29,37 @@ export class TenantsService {
       }
     });
 
-    const tenantUrl = await this.provisioning.provisionTenantDatabase({
-      companyId: company.id,
-      slug: dto.slug,
-      databaseName: dto.databaseName,
-      databaseUser: dto.databaseUser,
-      databasePassword: dto.databasePassword
-    });
+    try {
+      const tenantUrl = await this.provisioning.provisionTenantDatabase({
+        companyId: company.id,
+        slug: dto.slug,
+        databaseName: dto.databaseName,
+        databaseUser: dto.databaseUser,
+        databasePassword: dto.databasePassword
+      });
 
-    const tenantPrisma = this.tenantFactory.getClient(tenantUrl);
-    await tenantPrisma.user.create({
-      data: {
-        id: randomUUID(),
-        email: dto.ownerEmail,
-        fullName: `${dto.companyName} Owner`,
-        role: "COMPANY_OWNER",
-        passwordHash: await argon2.hash(dto.ownerPassword)
-      }
-    });
+      await this.tenantFactory.resetClient(tenantUrl);
+      const tenantPrisma = this.tenantFactory.getClient(tenantUrl);
+      await tenantPrisma.user.create({
+        data: {
+          id: randomUUID(),
+          email: dto.ownerEmail,
+          fullName: `${dto.companyName} Owner`,
+          role: "COMPANY_OWNER",
+          passwordHash: await argon2.hash(dto.ownerPassword)
+        }
+      });
 
-    return this.platformPrisma.company.findUniqueOrThrow({
-      where: { id: company.id },
-      include: { subscription: true, tenantDatabase: true }
-    });
+      return this.platformPrisma.company.findUniqueOrThrow({
+        where: { id: company.id },
+        include: { subscription: true, tenantDatabase: true }
+      });
+    } catch (error) {
+      await this.platformPrisma.company.delete({
+        where: { id: company.id }
+      }).catch(() => undefined);
+
+      throw error;
+    }
   }
 }

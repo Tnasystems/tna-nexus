@@ -3,13 +3,15 @@ import { ConfigService } from "@nestjs/config";
 import { Client } from "pg";
 import { PlatformPrismaService } from "../../database/platform-prisma.service";
 import { SecretCipherService } from "../../database/secret-cipher.service";
+import { TenantPrismaFactory } from "../../database/tenant-prisma.factory";
 
 @Injectable()
 export class PlatformAdminService {
   constructor(
     private readonly prisma: PlatformPrismaService,
     private readonly config: ConfigService,
-    private readonly secretCipher: SecretCipherService
+    private readonly secretCipher: SecretCipherService,
+    private readonly tenantFactory: TenantPrismaFactory
   ) {}
 
   dashboard() {
@@ -54,8 +56,14 @@ export class PlatformAdminService {
     }
 
     if (company.tenantDatabase) {
+      const tenantUrl = this.toTenantUrl(company.tenantDatabase);
+      await this.tenantFactory.resetClient(tenantUrl);
       await this.dropTenantDatabase(company.tenantDatabase.databaseName, company.tenantDatabase.databaseUser);
     }
+
+    await this.prisma.demoAccount.deleteMany({
+      where: { companyId }
+    });
 
     await this.prisma.company.delete({
       where: { id: companyId }
@@ -78,5 +86,16 @@ export class PlatformAdminService {
     await client.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
     await client.query(`DROP ROLE IF EXISTS "${databaseUser}"`);
     await client.end();
+  }
+
+  private toTenantUrl(tenantDatabase: {
+    databaseName: string;
+    databaseUser: string;
+    databasePasswordEncrypted: string;
+    host: string;
+    port: number;
+  }) {
+    const password = this.secretCipher.decrypt(tenantDatabase.databasePasswordEncrypted);
+    return `postgresql://${tenantDatabase.databaseUser}:${encodeURIComponent(password)}@${tenantDatabase.host}:${tenantDatabase.port}/${tenantDatabase.databaseName}?schema=public`;
   }
 }

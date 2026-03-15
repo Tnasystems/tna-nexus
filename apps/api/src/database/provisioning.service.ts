@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { ConflictException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -36,36 +36,51 @@ export class ProvisioningService {
     });
 
     await client.connect();
-    await client.query(`CREATE ROLE "${input.databaseUser}" LOGIN PASSWORD '${this.escapeLiteral(input.databasePassword)}'`);
-    await client.query(`CREATE DATABASE "${input.databaseName}" OWNER "${input.databaseUser}"`);
-    await client.end();
 
-    const tenantUrl = this.toTenantUrl(input);
-
-    await execFileAsync(
-      process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-      ["--filter", "@tna-nexus/api", "prisma:migrate:tenant"],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env, DATABASE_URL: tenantUrl }
+    try {
+      if (await this.databaseExists(client, input.databaseName)) {
+        throw new ConflictException(`Database ${input.databaseName} already exists.`);
       }
-    );
 
-    await this.platformPrisma.tenantDatabase.create({
-      data: {
-        companyId: input.companyId,
-        slug: input.slug,
-        databaseName: input.databaseName,
-        databaseUser: input.databaseUser,
-        databasePasswordEncrypted: this.secretCipher.encrypt(input.databasePassword),
-        host: this.config.getOrThrow("POSTGRES_HOST"),
-        port: Number(this.config.getOrThrow("POSTGRES_PORT")),
-        ssl: false
+      if (await this.roleExists(client, input.databaseUser)) {
+        throw new ConflictException(`Database user ${input.databaseUser} already exists.`);
       }
-    });
 
-    this.logger.log(`Provisioned dedicated tenant database for ${input.slug}`);
-    return tenantUrl;
+      await client.query(`CREATE ROLE "${input.databaseUser}" LOGIN PASSWORD '${this.escapeLiteral(input.databasePassword)}'`);
+      await client.query(`CREATE DATABASE "${input.databaseName}" OWNER "${input.databaseUser}"`);
+
+      const tenantUrl = this.toTenantUrl(input);
+
+      await execFileAsync(
+        process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+        ["--filter", "@tna-nexus/api", "prisma:migrate:tenant"],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, DATABASE_URL: tenantUrl }
+        }
+      );
+
+      await this.platformPrisma.tenantDatabase.create({
+        data: {
+          companyId: input.companyId,
+          slug: input.slug,
+          databaseName: input.databaseName,
+          databaseUser: input.databaseUser,
+          databasePasswordEncrypted: this.secretCipher.encrypt(input.databasePassword),
+          host: this.config.getOrThrow("POSTGRES_HOST"),
+          port: Number(this.config.getOrThrow("POSTGRES_PORT")),
+          ssl: false
+        }
+      });
+
+      this.logger.log(`Provisioned dedicated tenant database for ${input.slug}`);
+      return tenantUrl;
+    } catch (error) {
+      await this.cleanupFailedProvision(client, input.databaseName, input.databaseUser);
+      throw error;
+    } finally {
+      await client.end().catch(() => undefined);
+    }
   }
 
   toTenantUrl(input: { databaseName: string; databaseUser: string; databasePassword: string }) {
@@ -76,5 +91,21 @@ export class ProvisioningService {
 
   private escapeLiteral(value: string) {
     return value.replace(/'/g, "''");
+  }
+
+  private async databaseExists(client: Client, databaseName: string) {
+    const result = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [databaseName]);
+    return result.rowCount > 0;
+  }
+
+  private async roleExists(client: Client, roleName: string) {
+    const result = await client.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [roleName]);
+    return result.rowCount > 0;
+  }
+
+  private async cleanupFailedProvision(client: Client, databaseName: string, databaseUser: string) {
+    await client.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${databaseName}' AND pid <> pg_backend_pid()`).catch(() => undefined);
+    await client.query(`DROP DATABASE IF EXISTS "${databaseName}"`).catch(() => undefined);
+    await client.query(`DROP ROLE IF EXISTS "${databaseUser}"`).catch(() => undefined);
   }
 }

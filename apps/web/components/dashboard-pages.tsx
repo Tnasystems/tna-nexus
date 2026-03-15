@@ -381,7 +381,15 @@ export function JobsPage() {
   const [jobs, setJobs] = useState<Array<Record<string, unknown>>>([]);
   const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    title: string;
+    companyJobNumber: string;
+    customerJobNumber: string;
+    siteAddress: string;
+    status: string;
+    scheduledFor: string;
+    assignedOperativeIds: string[];
+  }>({
     title: "",
     companyJobNumber: "",
     customerJobNumber: "",
@@ -486,7 +494,12 @@ export function JobsPage() {
 export function UsersPage() {
   const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    email: string;
+    fullName: string;
+    role: string;
+    password: string;
+  }>({
     email: "",
     fullName: "",
     role: ROLE_VALUES[1],

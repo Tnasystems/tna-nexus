@@ -26,12 +26,21 @@ The primary setup path is now a direct Ubuntu Server install with:
 - systemd
 - Certbot
 
+Fastest install:
+```bash
+sudo apt update && sudo apt install -y git
+git clone https://github.com/Tnasystems/tna-nexus.git
+cd tna-nexus
+DOMAIN=your-domain.com ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeThisNow123!' bash packages/config/scripts/install-ubuntu.sh
+```
+
 Repository clone pattern:
 ```bash
 git clone https://github.com/Tnasystems/tna-nexus.git
 ```
 
 Use the full beginner-proof guide in [DEPLOYMENT.md](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\DEPLOYMENT.md).
+There is also a short installer guide in [INSTALL.md](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\INSTALL.md).
 
 ## Local development
 1. Copy the environment file:

@@ -8,7 +8,9 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/tna-nexus
 EnvironmentFile=/var/www/tna-nexus/.env
-ExecStart=/usr/bin/pnpm --filter @tna-nexus/api start
+Environment=NODE_ENV=production
+Environment=PORT=4000
+ExecStart=/usr/bin/env pnpm --filter @tna-nexus/api start
 Restart=always
 RestartSec=5
 

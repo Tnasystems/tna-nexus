@@ -2,6 +2,19 @@
 
 This is the no-Docker setup.
 
+## Fast path
+If you want the automated install, run:
+```bash
+sudo apt update && sudo apt install -y git
+git clone https://github.com/Tnasystems/tna-nexus.git
+cd tna-nexus
+DOMAIN=your-domain.com ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeThisNow123!' bash packages/config/scripts/install-ubuntu.sh
+```
+
+Short installer notes are in [INSTALL.md](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\INSTALL.md).
+
+The rest of this file is the manual step-by-step fallback path.
+
 If you have:
 - a fresh Ubuntu Server
 - a domain name
@@ -23,10 +36,9 @@ node -v
 npm -v
 ```
 
-## 3. Enable pnpm
+## 3. Install pnpm
 ```bash
-sudo corepack enable
-corepack prepare pnpm@10.8.1 --activate
+sudo npm install -g pnpm@10.8.1
 pnpm -v
 ```
 
@@ -66,7 +78,6 @@ sudo -u postgres psql
 
 Inside PostgreSQL, run:
 ```sql
-CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres';
 ALTER USER postgres WITH PASSWORD 'postgres';
 CREATE DATABASE tna_platform OWNER postgres;
 \q
@@ -190,6 +201,7 @@ Commands:
 sudo cp /var/www/tna-nexus/packages/config/systemd/tna-nexus-api.service /etc/systemd/system/
 sudo cp /var/www/tna-nexus/packages/config/systemd/tna-nexus-web.service /etc/systemd/system/
 sudo chown -R www-data:www-data /var/www/tna-nexus
+sudo chmod -R 755 /var/www/tna-nexus
 sudo systemctl daemon-reload
 sudo systemctl enable tna-nexus-api
 sudo systemctl enable tna-nexus-web

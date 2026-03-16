@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "TNA-Nexus",
-  description: "Industrial-tech SaaS for field service, workforce operations, jobs, forms, and compliance."
+  description: "Industrial-tech SaaS for field service, workforce operations, jobs, forms, assets, documents, notifications, and reporting."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -75,14 +75,6 @@ model Document {
   createdAt   DateTime @default(now())
 }
 
-model ComplianceRecord {
-  id        String   @id
-  title     String
-  dueDate   DateTime
-  status    String
-  createdAt DateTime @default(now())
-}
-
 model Notification {
   id        String   @id
   title     String

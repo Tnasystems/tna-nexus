@@ -1,6 +1,6 @@
 # TNA-Nexus
 
-TNA-Nexus is an original industrial-tech SaaS starter for field service, job management, staff coordination, forms, assets, compliance, documents, notifications, timesheets, and reporting.
+TNA-Nexus is an industrial-tech SaaS starter for field service, job management, staff coordination, forms, assets, documents, notifications, timesheets, and reporting.
 
 ## Core principles
 - API-first backend suitable for web now and native mobile later

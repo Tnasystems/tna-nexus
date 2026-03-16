@@ -66,7 +66,7 @@ interface CompanySummary {
 interface ReportingSummary {
   jobs: number;
   completedJobs: number;
-  openCompliance: number;
+  scheduledJobs: number;
   activeUsers: number;
 }
 
@@ -899,11 +899,11 @@ export function NotificationsPage() {
 }
 
 export function ReportingPage() {
-  const [summary, setSummary] = useState<{ jobs: number; completedJobs: number; openCompliance: number; activeUsers: number } | null>(null);
+  const [summary, setSummary] = useState<ReportingSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiRequest<{ jobs: number; completedJobs: number; openCompliance: number; activeUsers: number }>("reporting/summary")
+    apiRequest<ReportingSummary>("reporting/summary")
       .then(setSummary)
       .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Failed to load reporting."));
   }, []);
@@ -917,7 +917,7 @@ export function ReportingPage() {
             {[
               { label: "Jobs", value: summary?.jobs ?? 0 },
               { label: "Completed", value: summary?.completedJobs ?? 0 },
-              { label: "Open Actions", value: summary?.openCompliance ?? 0 },
+              { label: "Scheduled", value: summary?.scheduledJobs ?? 0 },
               { label: "Active Users", value: summary?.activeUsers ?? 0 }
             ].map((metric) => (
               <article key={metric.label} className="panel" style={{ padding: 22 }}>

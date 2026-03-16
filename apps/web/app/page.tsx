@@ -5,7 +5,7 @@ import { BrandLogo } from "../components/brand-logo";
 const pillars = [
   {
     title: "Office + field workflows",
-    text: "Manage jobs, staff, forms, assets, compliance, and documents from one API-first platform."
+    text: "Manage jobs, staff, forms, assets, documents, and notifications from one API-first platform."
   },
   {
     title: "Per-company database isolation",
@@ -38,7 +38,7 @@ export default function HomePage() {
             <h1 style={{ margin: 0, fontSize: "clamp(38px, 6vw, 72px)", lineHeight: 0.96 }}>
               Control jobs,
               <br />
-              workforce, and compliance without splitting office and field operations.
+              workforce, and field operations without splitting office and site delivery.
             </h1>
             <p className="muted" style={{ fontSize: 18, maxWidth: 720 }}>
               TNA-Nexus is a production-ready multi-tenant platform starter for service businesses that need strict data
@@ -90,7 +90,7 @@ export default function HomePage() {
             <div className="badge">Access flow</div>
             <h2 style={{ marginBottom: 8 }}>Platform admins and tenant users can now sign in from the web app</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Platform admins log in with just email and password. Tenant users add their company slug to reach the correct workspace.
+              Platform admins log in with email and password. Tenant users are routed to the correct workspace from their account.
             </p>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

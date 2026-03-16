@@ -95,6 +95,32 @@ interface JobRecord {
   assignedOperativeIds: string[];
 }
 
+function useJobsAndUsers() {
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const [nextJobs, nextUsers] = await Promise.all([
+        apiRequest<JobRecord[]>("jobs"),
+        apiRequest<UserRecord[]>("users")
+      ]);
+      setJobs(nextJobs);
+      setUsers(nextUsers);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to load jobs.");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  return { jobs, users, error, setError, reload: load };
+}
+
 export function TenantOverviewPage() {
   const [data, setData] = useState<{
     company?: CompanySummary;
@@ -413,14 +439,8 @@ function createCrudPage(config: {
 }
 
 export function JobsPage() {
-  const [jobs, setJobs] = useState<JobRecord[]>([]);
-  const [users, setUsers] = useState<UserRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { jobs, users, error, reload } = useJobsAndUsers();
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const current = new Date();
-    return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
-  });
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -438,35 +458,7 @@ export function JobsPage() {
     scheduledFor: "",
     assignedOperativeIds: [] as string[]
   });
-
-  async function load() {
-    try {
-      const [nextJobs, nextUsers] = await Promise.all([
-        apiRequest<JobRecord[]>("jobs"),
-        apiRequest<UserRecord[]>("users")
-      ]);
-      setJobs(nextJobs);
-      setUsers(nextUsers);
-      setError(null);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Failed to load jobs.");
-    }
-  }
-
-  useEffect(() => { void load(); }, []);
-
-  const [year, month] = calendarMonth.split("-").map((part) => Number(part));
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
   const usersById = new Map(users.map((user) => [user.id, user]));
-  const jobsForMonth = jobs.filter((job) => {
-    if (!job.scheduledFor) {
-      return false;
-    }
-
-    const scheduled = new Date(job.scheduledFor);
-    return scheduled.getFullYear() === year && scheduled.getMonth() + 1 === month;
-  });
 
   function toggleOperative(userId: string) {
     setForm((current) => ({
@@ -503,16 +495,6 @@ export function JobsPage() {
     });
   }
 
-  function jobsForUserOnDay(userId: string, day: number) {
-    return jobsForMonth.filter((job) => {
-      if (!job.scheduledFor || !(job.assignedOperativeIds ?? []).includes(userId)) {
-        return false;
-      }
-
-      return new Date(job.scheduledFor).getDate() === day;
-    });
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (editingJobId) {
@@ -521,58 +503,14 @@ export function JobsPage() {
       await apiRequest("jobs", { method: "POST", body: JSON.stringify(form) });
     }
     resetForm();
-    await load();
+    await reload();
   }
 
   return (
     <ProtectedWorkspace allow="tenant" description="Create and track operational jobs across sites." title="Jobs">
       {() => (
-        <div className="stack">
+        <PanelGrid>
           <article className="panel" style={{ padding: 24 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <div>
-                <h2 style={{ margin: 0 }}>Job calendar</h2>
-                <div className="muted" style={{ marginTop: 8 }}>Assignments by employee and day for the selected month.</div>
-              </div>
-              <label className="field" style={{ minWidth: 220 }}>
-                <span>Calendar month</span>
-                <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
-              </label>
-            </div>
-            <div className="calendar-wrap" style={{ marginTop: 20 }}>
-              <div className="jobs-calendar">
-                <div className="calendar-corner">Employee</div>
-                {monthDays.map((day) => (
-                  <div key={day} className="calendar-head">{day}</div>
-                ))}
-                {users.map((user) => (
-                  <Fragment key={user.id}>
-                    <div className="calendar-name">{user.fullName}</div>
-                    {monthDays.map((day) => {
-                      const assignedJobs = jobsForUserOnDay(user.id, day);
-                      return (
-                        <div key={`${user.id}-${day}`} className="calendar-cell">
-                          {assignedJobs.map((job) => (
-                            <button
-                              key={job.id}
-                              className="calendar-job"
-                              onClick={() => startEdit(job)}
-                              type="button"
-                            >
-                              {job.companyJobNumber}
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </Fragment>
-                ))}
-              </div>
-            </div>
-          </article>
-
-          <PanelGrid>
-            <article className="panel" style={{ padding: 24 }}>
             <h2 style={{ marginTop: 0 }}>{editingJobId ? "Edit job" : "Create job"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
               <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
@@ -631,7 +569,81 @@ export function JobsPage() {
             </div>
           </article>
         </PanelGrid>
-        </div>
+      )}
+    </ProtectedWorkspace>
+  );
+}
+
+export function CalendarPage() {
+  const { jobs, users, error } = useJobsAndUsers();
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const current = new Date();
+    return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const [year, month] = calendarMonth.split("-").map((part) => Number(part));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const jobsForMonth = jobs.filter((job) => {
+    if (!job.scheduledFor) {
+      return false;
+    }
+
+    const scheduled = new Date(job.scheduledFor);
+    return scheduled.getFullYear() === year && scheduled.getMonth() + 1 === month;
+  });
+
+  function jobsForUserOnDay(userId: string, day: number) {
+    return jobsForMonth.filter((job) => {
+      if (!job.scheduledFor || !(job.assignedOperativeIds ?? []).includes(userId)) {
+        return false;
+      }
+
+      return new Date(job.scheduledFor).getDate() === day;
+    });
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Monthly assignment view by employee and scheduled job date." title="Calendar">
+      {() => (
+        <article className="panel" style={{ padding: 24 }}>
+          <ErrorText error={error} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <h2 style={{ margin: 0 }}>Staff job calendar</h2>
+              <div className="muted" style={{ marginTop: 8 }}>Employees down the side, month days across the top, assigned jobs in each day cell.</div>
+            </div>
+            <label className="field" style={{ minWidth: 220 }}>
+              <span>Calendar month</span>
+              <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
+            </label>
+          </div>
+          <div className="calendar-wrap" style={{ marginTop: 20 }}>
+            <div className="jobs-calendar">
+              <div className="calendar-corner">Employee</div>
+              {monthDays.map((day) => (
+                <div key={day} className="calendar-head">{day}</div>
+              ))}
+              {users.map((user) => (
+                <Fragment key={user.id}>
+                  <div className="calendar-name">{user.fullName}</div>
+                  {monthDays.map((day) => {
+                    const assignedJobs = jobsForUserOnDay(user.id, day);
+                    return (
+                      <div key={`${user.id}-${day}`} className="calendar-cell">
+                        {assignedJobs.map((job) => (
+                          <div key={job.id} className="calendar-job">
+                            {job.companyJobNumber}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
+          </div>
+        </article>
       )}
     </ProtectedWorkspace>
   );

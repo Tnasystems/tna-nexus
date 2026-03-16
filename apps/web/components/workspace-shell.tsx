@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BriefcaseBusiness, Building2, ClipboardCheck, FileBarChart2, FileText, Home, LogOut, Shield, Users, Wrench } from "lucide-react";
+import { Bell, BriefcaseBusiness, Building2, CalendarDays, ClipboardCheck, FileBarChart2, FileText, Home, LogOut, Shield, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandLogo } from "./brand-logo";
@@ -8,6 +8,7 @@ import { clearSession, type AppSession } from "../lib/auth";
 
 const tenantNav = [
   { label: "Overview", href: "/dashboard", icon: Home },
+  { label: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
   { label: "Jobs", href: "/dashboard/jobs", icon: BriefcaseBusiness },
   { label: "Team", href: "/dashboard/users", icon: Users },
   { label: "Forms", href: "/dashboard/forms", icon: ClipboardCheck },

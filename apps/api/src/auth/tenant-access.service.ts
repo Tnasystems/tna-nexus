@@ -41,10 +41,12 @@ export class TenantAccessService {
         this.secretCipher.decrypt(metadata.databasePasswordEncrypted ?? "")
       )
     );
-    const currentUser = await prisma.user.findUnique({ where: { id: user.sub } });
+    if (user.role !== "PLATFORM_ADMIN") {
+      const currentUser = await prisma.user.findUnique({ where: { id: user.sub } });
 
-    if (!currentUser || currentUser.accountStatus !== "ACTIVE") {
-      throw new ForbiddenException("This user account is disabled.");
+      if (!currentUser || currentUser.accountStatus !== "ACTIVE") {
+        throw new ForbiddenException("This user account is disabled.");
+      }
     }
 
     return {

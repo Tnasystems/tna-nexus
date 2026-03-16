@@ -262,6 +262,119 @@ option {
   color: var(--muted);
 }
 
+.schedule-board-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.schedule-board {
+  display: grid;
+  grid-template-columns: 220px repeat(14, minmax(110px, 1fr));
+  min-width: 1780px;
+}
+
+.schedule-board-corner,
+.schedule-board-header,
+.schedule-board-user,
+.schedule-board-cell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.schedule-board-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 14px 16px;
+  background: rgba(19, 37, 58, 0.98);
+}
+
+.schedule-board-header {
+  min-height: 72px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.schedule-board-header-weekend {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.schedule-board-user {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-height: 92px;
+  padding: 14px 16px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  background: rgba(52, 211, 153, 0.14);
+}
+
+.schedule-board-user-name {
+  font-weight: 800;
+}
+
+.schedule-board-user-role {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.schedule-board-cell {
+  min-height: 92px;
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.schedule-board-cell-weekend {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0.04) 6px,
+      rgba(255, 255, 255, 0.015) 6px,
+      rgba(255, 255, 255, 0.015) 12px
+    );
+}
+
+.schedule-board-empty {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 22px;
+}
+
+.schedule-job-chip {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid;
+  border-radius: 10px;
+  min-height: 44px;
+}
+
+.schedule-job-chip-code {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.schedule-job-chip-title {
+  font-size: 11px;
+  line-height: 1.15;
+  opacity: 0.95;
+}
+
 .assignment-pill {
   display: inline-flex;
   align-items: center;

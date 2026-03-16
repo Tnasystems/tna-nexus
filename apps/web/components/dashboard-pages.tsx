@@ -148,6 +148,24 @@ function startOfWeek(day: Date) {
   return next;
 }
 
+function shiftDateKey(dateKey: string, days: number) {
+  const next = new Date(`${dateKey}T00:00:00`);
+  next.setDate(next.getDate() + days);
+  return toDateKey(next);
+}
+
+function getJobChipStyle(status: string) {
+  if (status === "COMPLETED") {
+    return { background: "rgba(52, 211, 153, 0.22)", borderColor: "rgba(52, 211, 153, 0.45)", color: "#d8fff0" };
+  }
+
+  if (status === "IN_PROGRESS") {
+    return { background: "rgba(251, 191, 36, 0.22)", borderColor: "rgba(251, 191, 36, 0.45)", color: "#fff0c2" };
+  }
+
+  return { background: "rgba(96, 165, 250, 0.24)", borderColor: "rgba(96, 165, 250, 0.42)", color: "#deebff" };
+}
+
 function useJobsAndUsers() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -919,7 +937,7 @@ function CalendarWorkspace({
   const operativeUsers = users.filter((user) => user.role === "OPERATIVE");
   const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
   const currentWeekStart = startOfWeek(new Date(`${weekFocusDate}T00:00:00`));
-  const weekDays = Array.from({ length: 7 }, (_, index) => {
+  const boardDays = Array.from({ length: 14 }, (_, index) => {
     const day = new Date(currentWeekStart);
     day.setDate(currentWeekStart.getDate() + index);
     return day;
@@ -981,10 +999,20 @@ function CalendarWorkspace({
             </div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               {showTeamWeek ? (
-                <label className="field" style={{ minWidth: 220 }}>
-                  <span>Week of</span>
-                  <input className="input" onChange={(event) => setWeekFocusDate(event.target.value)} type="date" value={weekFocusDate} />
-                </label>
+                <>
+                  <div className="field" style={{ minWidth: 280 }}>
+                    <span>Schedule window</span>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button className="button button-subtle" onClick={() => setWeekFocusDate(shiftDateKey(weekFocusDate, -7))} type="button">
+                        Previous
+                      </button>
+                      <input className="input" onChange={(event) => setWeekFocusDate(event.target.value)} type="date" value={weekFocusDate} />
+                      <button className="button button-subtle" onClick={() => setWeekFocusDate(shiftDateKey(weekFocusDate, 7))} type="button">
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <label className="field" style={{ minWidth: 220 }}>
                   <span>Calendar month</span>
@@ -1029,35 +1057,46 @@ function CalendarWorkspace({
             </div>
           </div>
           {showTeamWeek ? (
-            <div style={{ marginTop: 20, overflowX: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "220px repeat(7, minmax(180px, 1fr))", minWidth: 1300 }}>
-                <div className="calendar-weekday">Employee</div>
-                {weekDays.map((day) => (
-                  <div key={day.toISOString()} className="calendar-weekday">
+            <div className="schedule-board-wrap" style={{ marginTop: 20 }}>
+              <div className="schedule-board">
+                <div className="schedule-board-corner">
+                  <div style={{ fontWeight: 800 }}>Schedule</div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {boardDays[0].toLocaleDateString()} - {boardDays[boardDays.length - 1].toLocaleDateString()}
+                  </div>
+                </div>
+                {boardDays.map((day) => (
+                  <div key={day.toISOString()} className={`schedule-board-header ${day.getDay() === 0 || day.getDay() === 6 ? "schedule-board-header-weekend" : ""}`}>
                     <div>{day.toLocaleDateString(undefined, { weekday: "short" })}</div>
-                    <div>{day.toLocaleDateString()}</div>
+                    <div>{day.getDate()}</div>
                   </div>
                 ))}
                 {operativeUsers.map((user) => (
                   <Fragment key={user.id}>
-                    <div className="calendar-day" style={{ minHeight: 120 }}>
-                      <div style={{ fontWeight: 700 }}>{user.fullName}</div>
-                      <div className="muted">{user.role}</div>
+                    <div className="schedule-board-user">
+                      <div className="schedule-board-user-name">{user.fullName}</div>
+                      <div className="schedule-board-user-role">{user.role}</div>
                     </div>
-                    {weekDays.map((day) => {
+                    {boardDays.map((day) => {
                       const dayKey = toDateKey(day);
                       const dayJobs = jobsForEmployeeOnDay(user.id, dayKey);
                       return (
-                        <div key={`${user.id}-${dayKey}`} className="calendar-day" style={{ minHeight: 120 }}>
-                          <div className="calendar-day-content">
-                            {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
-                            {dayJobs.map((job) => (
-                              <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
-                                <div className="calendar-entry-title">{job.companyJobNumber}</div>
-                                <div className="calendar-entry-subtitle">{job.title}</div>
-                              </Link>
-                            ))}
-                          </div>
+                        <div
+                          key={`${user.id}-${dayKey}`}
+                          className={`schedule-board-cell ${day.getDay() === 0 || day.getDay() === 6 ? "schedule-board-cell-weekend" : ""}`}
+                        >
+                          {dayJobs.length === 0 ? <div className="schedule-board-empty">-</div> : null}
+                          {dayJobs.map((job) => (
+                            <Link
+                              key={job.id}
+                              className="schedule-job-chip"
+                              href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}
+                              style={getJobChipStyle(job.status)}
+                            >
+                              <div className="schedule-job-chip-code">{job.companyJobNumber}</div>
+                              <div className="schedule-job-chip-title">{job.title}</div>
+                            </Link>
+                          ))}
                         </div>
                       );
                     })}

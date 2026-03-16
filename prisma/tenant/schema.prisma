@@ -30,6 +30,7 @@ model Job {
   scheduledFor        DateTime?
   scheduledTo         DateTime?
   scheduledDays       String[]
+  dailyAssignmentsJson String   @default("{}")
   assignedOperativeIds String[]
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

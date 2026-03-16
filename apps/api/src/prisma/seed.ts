@@ -85,6 +85,9 @@ async function main() {
         scheduledFor: new Date(startOfDay.getTime()),
         scheduledTo: new Date(startOfDay.getTime() + 8 * 60 * 60 * 1000),
         scheduledDays: [toDateKey(new Date(startOfDay.getTime()))],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime()))]: [team[2].id]
+        }),
         assignedOperativeIds: [team[2].id]
       },
       {
@@ -100,6 +103,10 @@ async function main() {
           toDateKey(new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)),
           toDateKey(new Date(startOfDay.getTime() + 2 * 24 * 60 * 60 * 1000))
         ],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000))]: [team[3].id, team[4].id],
+          [toDateKey(new Date(startOfDay.getTime() + 2 * 24 * 60 * 60 * 1000))]: [team[3].id]
+        }),
         assignedOperativeIds: [team[3].id, team[4].id]
       },
       {
@@ -115,6 +122,10 @@ async function main() {
           toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000)),
           toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))
         ],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000))]: [team[2].id, team[3].id],
+          [toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))]: [team[3].id]
+        }),
         assignedOperativeIds: [team[2].id, team[3].id]
       },
       {
@@ -127,6 +138,9 @@ async function main() {
         scheduledFor: new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (7 * 24 + 6) * 60 * 60 * 1000),
         scheduledDays: [toDateKey(new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000))],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000))]: [team[4].id]
+        }),
         assignedOperativeIds: [team[4].id]
       },
       {
@@ -142,6 +156,10 @@ async function main() {
           toDateKey(new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000)),
           toDateKey(new Date(startOfDay.getTime() + 11 * 24 * 60 * 60 * 1000))
         ],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000))]: [team[2].id, team[4].id],
+          [toDateKey(new Date(startOfDay.getTime() + 11 * 24 * 60 * 60 * 1000))]: [team[4].id]
+        }),
         assignedOperativeIds: [team[2].id, team[4].id]
       }
     ];

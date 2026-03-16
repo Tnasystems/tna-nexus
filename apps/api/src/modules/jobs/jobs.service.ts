@@ -15,8 +15,8 @@ export class JobsService {
 
   async create(user: JwtUser, dto: CreateJobDto) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    const scheduledDays = this.normalizeScheduledDays(dto.scheduledDays, dto.scheduledFor, dto.scheduledTo);
-    await this.ensureNoAssignmentClashes(prisma, dto.assignedOperativeIds ?? [], scheduledDays);
+    const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.buildScheduling(dto);
+    await this.ensureNoAssignmentClashes(prisma, dailyAssignments);
     return prisma.job.create({
       data: {
         id: randomUUID(),
@@ -28,7 +28,8 @@ export class JobsService {
         scheduledFor: this.toDateBoundary(dto.scheduledFor, scheduledDays[0], "start"),
         scheduledTo: this.toDateBoundary(dto.scheduledTo, scheduledDays[scheduledDays.length - 1], "end"),
         scheduledDays,
-        assignedOperativeIds: dto.assignedOperativeIds ?? []
+        dailyAssignmentsJson: JSON.stringify(dailyAssignments),
+        assignedOperativeIds
       }
     });
   }
@@ -41,12 +42,8 @@ export class JobsService {
       throw new NotFoundException("Job not found.");
     }
 
-    const scheduledDays = dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
-      ? existing.scheduledDays
-      : this.normalizeScheduledDays(dto.scheduledDays, dto.scheduledFor, dto.scheduledTo);
-    const assignedOperativeIds = dto.assignedOperativeIds ?? existing.assignedOperativeIds;
-
-    await this.ensureNoAssignmentClashes(prisma, assignedOperativeIds, scheduledDays, jobId);
+    const scheduling = this.buildScheduling(dto, existing);
+    await this.ensureNoAssignmentClashes(prisma, scheduling.dailyAssignments, jobId);
 
     return prisma.job.update({
       where: { id: jobId },
@@ -58,16 +55,50 @@ export class JobsService {
         status: dto.status ?? undefined,
         scheduledFor: dto.scheduledDays === undefined && dto.scheduledFor === undefined
           ? undefined
-          : this.toDateBoundary(dto.scheduledFor, scheduledDays[0], "start"),
+          : this.toDateBoundary(dto.scheduledFor, scheduling.scheduledDays[0], "start"),
         scheduledTo: dto.scheduledDays === undefined && dto.scheduledTo === undefined
           ? undefined
-          : this.toDateBoundary(dto.scheduledTo, scheduledDays[scheduledDays.length - 1], "end"),
+          : this.toDateBoundary(dto.scheduledTo, scheduling.scheduledDays[scheduling.scheduledDays.length - 1], "end"),
         scheduledDays: dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
           ? undefined
-          : scheduledDays,
-        assignedOperativeIds: dto.assignedOperativeIds ?? undefined
+          : scheduling.scheduledDays,
+        dailyAssignmentsJson: dto.dailyAssignments === undefined && dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
+          ? undefined
+          : JSON.stringify(scheduling.dailyAssignments),
+        assignedOperativeIds: scheduling.assignedOperativeIds
       }
     });
+  }
+
+  private buildScheduling(
+    dto: Pick<CreateJobDto, "scheduledDays" | "scheduledFor" | "scheduledTo" | "assignedOperativeIds" | "dailyAssignments">,
+    existing?: {
+      scheduledDays: string[];
+      scheduledFor: Date | null;
+      scheduledTo: Date | null;
+      dailyAssignmentsJson: string;
+      assignedOperativeIds: string[];
+    }
+  ) {
+    const baseScheduledDays = dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
+      ? this.deriveExistingScheduledDays(existing)
+      : this.normalizeScheduledDays(dto.scheduledDays, dto.scheduledFor, dto.scheduledTo);
+    const existingAssignments = this.parseDailyAssignments(existing?.dailyAssignmentsJson);
+    const rawAssignments = dto.dailyAssignments === undefined
+      ? this.withFallbackAssignments(existingAssignments, baseScheduledDays, existing?.assignedOperativeIds ?? dto.assignedOperativeIds ?? [])
+      : this.withFallbackAssignments(this.normalizeDailyAssignments(dto.dailyAssignments), baseScheduledDays, dto.assignedOperativeIds ?? []);
+    const scheduledDays = [...new Set([
+      ...baseScheduledDays,
+      ...Object.keys(rawAssignments)
+    ])].sort();
+    const dailyAssignments = Object.fromEntries(
+      scheduledDays.map((day) => [day, [...new Set(rawAssignments[day] ?? [])]])
+    );
+    const assignedOperativeIds = [...new Set(
+      Object.values(dailyAssignments).flat()
+    )];
+
+    return { scheduledDays, dailyAssignments, assignedOperativeIds };
   }
 
   private normalizeScheduledDays(scheduledDays?: string[], scheduledFor?: string, scheduledTo?: string) {
@@ -122,11 +153,15 @@ export class JobsService {
     return `${year}-${month}-${day}`;
   }
 
-  private deriveExistingScheduledDays(job: {
+  private deriveExistingScheduledDays(job?: {
     scheduledDays: string[];
     scheduledFor: Date | null;
     scheduledTo: Date | null;
   }) {
+    if (!job) {
+      return [];
+    }
+
     if ((job.scheduledDays ?? []).length > 0) {
       return job.scheduledDays;
     }
@@ -138,12 +173,52 @@ export class JobsService {
     return this.normalizeScheduledDays(undefined, job.scheduledFor.toISOString(), job.scheduledTo?.toISOString());
   }
 
+  private parseDailyAssignments(value?: string) {
+    if (!value) {
+      return {} as Record<string, string[]>;
+    }
+
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      return this.normalizeDailyAssignments(parsed);
+    } catch {
+      return {} as Record<string, string[]>;
+    }
+  }
+
+  private normalizeDailyAssignments(value?: Record<string, unknown>) {
+    return Object.fromEntries(
+      Object.entries(value ?? {})
+        .filter(([day]) => Boolean(day))
+        .map(([day, users]) => [
+          day,
+          Array.isArray(users)
+            ? [...new Set(users.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0))]
+            : []
+        ])
+    ) as Record<string, string[]>;
+  }
+
+  private withFallbackAssignments(
+    assignments: Record<string, string[]>,
+    scheduledDays: string[],
+    fallbackUsers: string[]
+  ) {
+    if (Object.keys(assignments).length > 0) {
+      return assignments;
+    }
+
+    return Object.fromEntries(scheduledDays.map((day) => [day, fallbackUsers])) as Record<string, string[]>;
+  }
+
   private async ensureNoAssignmentClashes(
     prisma: Awaited<ReturnType<TenantAccessService["getTenantContext"]>>["prisma"],
-    assignedOperativeIds: string[],
-    scheduledDays: string[],
+    dailyAssignments: Record<string, string[]>,
     excludeJobId?: string
   ) {
+    const scheduledDays = Object.keys(dailyAssignments);
+    const assignedOperativeIds = [...new Set(Object.values(dailyAssignments).flat())];
+
     if (assignedOperativeIds.length === 0 || scheduledDays.length === 0) {
       return;
     }
@@ -158,12 +233,21 @@ export class JobsService {
     });
 
     for (const conflict of possibleConflicts) {
-      const conflictDays = this.deriveExistingScheduledDays(conflict);
-      const overlappingDays = scheduledDays.filter((day) => conflictDays.includes(day));
-      if (overlappingDays.length > 0) {
-        throw new BadRequestException(
-          `Assigned operatives already have another job on ${overlappingDays.join(", ")}.`
-        );
+      const conflictAssignments = this.withFallbackAssignments(
+        this.parseDailyAssignments(conflict.dailyAssignmentsJson),
+        this.deriveExistingScheduledDays(conflict),
+        conflict.assignedOperativeIds
+      );
+      for (const day of scheduledDays) {
+        const requestedUsers = dailyAssignments[day] ?? [];
+        const conflictingUsers = conflictAssignments[day] ?? [];
+        const overlappingUsers = requestedUsers.filter((userId) => conflictingUsers.includes(userId));
+
+        if (overlappingUsers.length > 0) {
+          throw new BadRequestException(
+            `Assigned operatives already have another job on ${day}.`
+          );
+        }
       }
     }
   }

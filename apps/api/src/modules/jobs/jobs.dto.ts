@@ -1,6 +1,6 @@
 import { ApiProperty, PartialType } from "@nestjs/swagger";
 import { JOB_STATUS_VALUES } from "@tna-nexus/shared";
-import { IsArray, IsDateString, IsIn, IsOptional, IsString } from "class-validator";
+import { IsArray, IsDateString, IsIn, IsObject, IsOptional, IsString } from "class-validator";
 
 export class CreateJobDto {
   @ApiProperty()
@@ -44,6 +44,11 @@ export class CreateJobDto {
   @IsArray()
   @IsString({ each: true })
   assignedOperativeIds?: string[];
+
+  @ApiProperty({ required: false, type: "object", additionalProperties: { type: "array", items: { type: "string" } } })
+  @IsOptional()
+  @IsObject()
+  dailyAssignments?: Record<string, string[]>;
 }
 
 export class UpdateJobDto extends PartialType(CreateJobDto) {}

@@ -97,10 +97,56 @@ interface JobRecord {
   scheduledFor: string | null;
   scheduledTo: string | null;
   scheduledDays: string[];
+  dailyAssignmentsJson: string;
   assignedOperativeIds: string[];
 }
 
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
+
+function toDateKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function parseDailyAssignments(value: string | null | undefined) {
+  if (!value) {
+    return {} as Record<string, string[]>;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).map(([day, users]) => [
+        day,
+        Array.isArray(users) ? users.filter((entry): entry is string => typeof entry === "string") : []
+      ])
+    ) as Record<string, string[]>;
+  } catch {
+    return {} as Record<string, string[]>;
+  }
+}
+
+function getJobDailyAssignments(job: JobRecord) {
+  const parsed = parseDailyAssignments(job.dailyAssignmentsJson);
+  if (Object.keys(parsed).length > 0) {
+    return parsed;
+  }
+
+  return Object.fromEntries(
+    (job.scheduledDays ?? []).map((day) => [day, job.assignedOperativeIds ?? []])
+  ) as Record<string, string[]>;
+}
+
+function getAssignedUsersForDay(job: JobRecord, day: string) {
+  return getJobDailyAssignments(job)[day] ?? [];
+}
+
+function startOfWeek(day: Date) {
+  const next = new Date(day);
+  const offset = (next.getDay() + 6) % 7;
+  next.setDate(next.getDate() - offset);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
 
 function useJobsAndUsers() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
@@ -481,7 +527,7 @@ export function JobsPage() {
     siteAddress: string;
     status: string;
     scheduledDays: string[];
-    assignedOperativeIds: string[];
+    dailyAssignments: Record<string, string[]>;
   }>({
     title: "",
     companyJobNumber: "",
@@ -489,9 +535,10 @@ export function JobsPage() {
     siteAddress: "",
     status: JOB_STATUS_VALUES[1],
     scheduledDays: [],
-    assignedOperativeIds: [] as string[]
+    dailyAssignments: {}
   });
   const [selectedDay, setSelectedDay] = useState("");
+  const [selectedAssignmentDay, setSelectedAssignmentDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
@@ -505,36 +552,52 @@ export function JobsPage() {
       ...current,
       scheduledDays: current.scheduledDays.includes(selectedDay)
         ? current.scheduledDays
-        : [...current.scheduledDays, selectedDay].sort()
+        : [...current.scheduledDays, selectedDay].sort(),
+      dailyAssignments: current.dailyAssignments[selectedDay]
+        ? current.dailyAssignments
+        : { ...current.dailyAssignments, [selectedDay]: [] }
     }));
+    setSelectedAssignmentDay(selectedDay);
     setSelectedDay("");
   }
 
   function removeScheduledDay(day: string) {
     setForm((current) => ({
       ...current,
-      scheduledDays: current.scheduledDays.filter((entry) => entry !== day)
+      scheduledDays: current.scheduledDays.filter((entry) => entry !== day),
+      dailyAssignments: Object.fromEntries(
+        Object.entries(current.dailyAssignments).filter(([entry]) => entry !== day)
+      )
     }));
+    if (selectedAssignmentDay === day) {
+      setSelectedAssignmentDay("");
+    }
   }
 
   function addOperative() {
-    if (!selectedOperativeId) {
+    if (!selectedOperativeId || !selectedAssignmentDay) {
       return;
     }
 
     setForm((current) => ({
       ...current,
-      assignedOperativeIds: current.assignedOperativeIds.includes(selectedOperativeId)
-        ? current.assignedOperativeIds
-        : [...current.assignedOperativeIds, selectedOperativeId]
+      dailyAssignments: {
+        ...current.dailyAssignments,
+        [selectedAssignmentDay]: current.dailyAssignments[selectedAssignmentDay]?.includes(selectedOperativeId)
+          ? current.dailyAssignments[selectedAssignmentDay]
+          : [...(current.dailyAssignments[selectedAssignmentDay] ?? []), selectedOperativeId]
+      }
     }));
     setSelectedOperativeId("");
   }
 
-  function removeOperative(userId: string) {
+  function removeOperative(day: string, userId: string) {
     setForm((current) => ({
       ...current,
-      assignedOperativeIds: current.assignedOperativeIds.filter((id) => id !== userId)
+      dailyAssignments: {
+        ...current.dailyAssignments,
+        [day]: (current.dailyAssignments[day] ?? []).filter((id) => id !== userId)
+      }
     }));
   }
 
@@ -546,14 +609,18 @@ export function JobsPage() {
       siteAddress: "",
       status: JOB_STATUS_VALUES[1],
       scheduledDays: [],
-      assignedOperativeIds: []
+      dailyAssignments: {}
     });
     setSelectedDay("");
+    setSelectedAssignmentDay("");
     setSelectedOperativeId("");
     setEditingJobId(null);
   }
 
   function startEdit(job: JobRecord) {
+    const scheduledDays = (job.scheduledDays ?? []).length > 0
+      ? [...job.scheduledDays].sort()
+      : [job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
     setEditingJobId(job.id);
     setForm({
       title: job.title,
@@ -561,11 +628,12 @@ export function JobsPage() {
       customerJobNumber: job.customerJobNumber,
       siteAddress: job.siteAddress,
       status: job.status,
-      scheduledDays: (job.scheduledDays ?? []).length > 0
-        ? [...job.scheduledDays].sort()
-        : [job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean),
-      assignedOperativeIds: job.assignedOperativeIds ?? []
+      scheduledDays,
+      dailyAssignments: Object.fromEntries(
+        scheduledDays.map((day) => [day, getAssignedUsersForDay(job, day)])
+      )
     });
+    setSelectedAssignmentDay(scheduledDays[0] ?? "");
   }
 
   useEffect(() => {
@@ -588,10 +656,16 @@ export function JobsPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const payload = {
+      ...form,
+      dailyAssignments: Object.fromEntries(
+        form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
+      )
+    };
     if (editingJobId) {
-      await apiRequest(`jobs/${editingJobId}`, { method: "PATCH", body: JSON.stringify(form) });
+      await apiRequest(`jobs/${editingJobId}`, { method: "PATCH", body: JSON.stringify(payload) });
     } else {
-      await apiRequest("jobs", { method: "POST", body: JSON.stringify(form) });
+      await apiRequest("jobs", { method: "POST", body: JSON.stringify(payload) });
     }
     resetForm();
     await reload();
@@ -629,8 +703,17 @@ export function JobsPage() {
                 </div>
               </div>
               <div className="field">
-                <span>Assign operatives</span>
+                <span>Assign operatives by day</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                  <label className="field" style={{ flex: "1 1 220px" }}>
+                    <span>Assignment day</span>
+                    <select className="input" onChange={(event) => setSelectedAssignmentDay(event.target.value)} value={selectedAssignmentDay}>
+                      <option value="">Choose a scheduled day</option>
+                      {form.scheduledDays.map((day) => (
+                        <option key={day} value={day}>{new Date(`${day}T00:00:00`).toLocaleDateString()}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="field" style={{ flex: "1 1 260px" }}>
                     <span>Select team member</span>
                     <select className="input" onChange={(event) => setSelectedOperativeId(event.target.value)} value={selectedOperativeId}>
@@ -642,12 +725,20 @@ export function JobsPage() {
                   </label>
                   <button className="button button-subtle" onClick={addOperative} type="button">Add to Job</button>
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {form.assignedOperativeIds.length === 0 ? <div className="muted">No team members assigned.</div> : null}
-                  {form.assignedOperativeIds.map((userId) => (
-                    <div key={userId} className="assignment-pill">
-                      <span>{usersById.get(userId)?.fullName ?? userId}</span>
-                      <button className="assignment-pill-remove" onClick={() => removeOperative(userId)} type="button">Remove</button>
+                <div className="stack">
+                  {form.scheduledDays.length === 0 ? <div className="muted">Add scheduled days before assigning people.</div> : null}
+                  {form.scheduledDays.map((day) => (
+                    <div key={day} className="panel" style={{ padding: 16 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 10 }}>{new Date(`${day}T00:00:00`).toLocaleDateString()}</div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {(form.dailyAssignments[day] ?? []).length === 0 ? <div className="muted">No team members assigned.</div> : null}
+                        {(form.dailyAssignments[day] ?? []).map((userId) => (
+                          <div key={`${day}-${userId}`} className="assignment-pill">
+                            <span>{usersById.get(userId)?.fullName ?? userId}</span>
+                            <button className="assignment-pill-remove" onClick={() => removeOperative(day, userId)} type="button">Remove</button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -680,8 +771,8 @@ export function JobsPage() {
                       : "Not scheduled"}
                   </div>
                   <div className="muted">
-                    Assigned: {job.assignedOperativeIds.length > 0
-                      ? job.assignedOperativeIds.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
+                    Assigned: {job.scheduledDays.flatMap((day) => getAssignedUsersForDay(job, day)).length > 0
+                      ? [...new Set(job.scheduledDays.flatMap((day) => getAssignedUsersForDay(job, day)))].map((id) => usersById.get(id)?.fullName ?? id).join(", ")
                       : "Unassigned"}
                   </div>
                 </div>
@@ -700,6 +791,7 @@ export function CalendarPage() {
     const current = new Date();
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [weekFocusDate, setWeekFocusDate] = useState(() => toDateKey(new Date()));
 
   return (
     <ProtectedWorkspace allow="tenant" description="Monthly assignment view by employee and scheduled job date." title="Calendar">
@@ -710,7 +802,9 @@ export function CalendarPage() {
           jobs={jobs}
           session={session}
           setCalendarMonth={setCalendarMonth}
+          setWeekFocusDate={setWeekFocusDate}
           users={users}
+          weekFocusDate={weekFocusDate}
         />
       )}
     </ProtectedWorkspace>
@@ -723,7 +817,9 @@ function CalendarWorkspace({
   users,
   error,
   calendarMonth,
-  setCalendarMonth
+  setCalendarMonth,
+  weekFocusDate,
+  setWeekFocusDate
 }: Readonly<{
   session: AppSession;
   jobs: JobRecord[];
@@ -731,6 +827,8 @@ function CalendarWorkspace({
   error: string | null;
   calendarMonth: string;
   setCalendarMonth: (value: string) => void;
+  weekFocusDate: string;
+  setWeekFocusDate: (value: string) => void;
 }>) {
   const isManager = MANAGER_ROLES.has(session.user.role);
   const defaultEmployee = !isManager ? session.user.sub : "all";
@@ -742,7 +840,14 @@ function CalendarWorkspace({
   const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
   const leadingEmptyDays = (firstDayOfMonth.getDay() + 6) % 7;
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const operativeUsers = users.filter((user) => user.role === "OPERATIVE");
   const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
+  const currentWeekStart = startOfWeek(new Date(`${weekFocusDate}T00:00:00`));
+  const weekDays = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(currentWeekStart);
+    day.setDate(currentWeekStart.getDate() + index);
+    return day;
+  });
   const jobsForMonth = jobs.filter((job) => {
     const scheduledDays = job.scheduledDays ?? [];
     if (scheduledDays.length === 0 && !job.scheduledFor) {
@@ -766,20 +871,12 @@ function CalendarWorkspace({
     }
   }, [isManager, session.user.sub]);
 
-  function jobMatchesSelectedEmployee(job: JobRecord) {
-    if (selectedEmployeeId === "all") {
-      return true;
-    }
-
-    return (job.assignedOperativeIds ?? []).includes(selectedEmployeeId);
-  }
-
   function jobsForDay(day: number) {
+    const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     return jobsForMonth.filter((job) => {
-      if (!jobMatchesSelectedEmployee(job)) {
+      if (selectedEmployeeId !== "all" && !getAssignedUsersForDay(job, dayKey).includes(selectedEmployeeId)) {
         return false;
       }
-      const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       if ((job.scheduledDays ?? []).length > 0) {
         return job.scheduledDays.includes(dayKey);
       }
@@ -792,6 +889,10 @@ function CalendarWorkspace({
     });
   }
 
+  function jobsForEmployeeOnDay(userId: string, day: string) {
+    return jobs.filter((job) => getAssignedUsersForDay(job, day).includes(userId));
+  }
+
   return (
     <article className="panel" style={{ padding: 24 }}>
           <ErrorText error={error} />
@@ -801,10 +902,17 @@ function CalendarWorkspace({
               <div className="muted" style={{ marginTop: 8 }}>Month view with each day showing scheduled jobs and assigned employees.</div>
             </div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <label className="field" style={{ minWidth: 220 }}>
-                <span>Calendar month</span>
-                <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
-              </label>
+              {isManager && selectedEmployeeId === "all" ? (
+                <label className="field" style={{ minWidth: 220 }}>
+                  <span>Week of</span>
+                  <input className="input" onChange={(event) => setWeekFocusDate(event.target.value)} type="date" value={weekFocusDate} />
+                </label>
+              ) : (
+                <label className="field" style={{ minWidth: 220 }}>
+                  <span>Calendar month</span>
+                  <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
+                </label>
+              )}
               <label className="field" style={{ minWidth: 220 }}>
                 <span>{isManager ? "Employee schedule" : "Viewing"}</span>
                 <select
@@ -821,41 +929,78 @@ function CalendarWorkspace({
               </label>
             </div>
           </div>
-          <div className="calendar-month" style={{ marginTop: 20 }}>
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
-              <div key={label} className="calendar-weekday">{label}</div>
-            ))}
-            {Array.from({ length: leadingEmptyDays }).map((_, index) => (
-              <div key={`empty-${index}`} className="calendar-day calendar-day-empty" />
-            ))}
-            {monthDays.map((day) => {
-              const dayJobs = jobsForDay(day);
-              return (
-                <div key={day} className="calendar-day">
-                  <div className="calendar-day-number">{day}</div>
-                  <div className="calendar-day-content">
-                    {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
-                    {dayJobs.map((job) => (
-                      <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
-                        <div className="calendar-entry-title">{job.companyJobNumber}</div>
-                        <div className="calendar-entry-subtitle">{job.title}</div>
-                        <div className="calendar-entry-subtitle">
-                          {(job.scheduledDays ?? []).length > 0
-                            ? job.scheduledDays.map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")
-                            : (job.scheduledFor ? new Date(job.scheduledFor).toLocaleDateString() : "")}
-                        </div>
-                        <div className="calendar-entry-subtitle">
-                          {(job.assignedOperativeIds ?? []).length > 0
-                            ? job.assignedOperativeIds.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
-                            : "Unassigned"}
-                        </div>
-                      </Link>
-                    ))}
+          {isManager && selectedEmployeeId === "all" ? (
+            <div style={{ marginTop: 20, overflowX: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "220px repeat(7, minmax(180px, 1fr))", minWidth: 1300 }}>
+                <div className="calendar-weekday">Employee</div>
+                {weekDays.map((day) => (
+                  <div key={day.toISOString()} className="calendar-weekday">
+                    <div>{day.toLocaleDateString(undefined, { weekday: "short" })}</div>
+                    <div>{day.toLocaleDateString()}</div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+                {operativeUsers.map((user) => (
+                  <Fragment key={user.id}>
+                    <div className="calendar-day" style={{ minHeight: 120 }}>
+                      <div style={{ fontWeight: 700 }}>{user.fullName}</div>
+                      <div className="muted">{user.role}</div>
+                    </div>
+                    {weekDays.map((day) => {
+                      const dayKey = toDateKey(day);
+                      const dayJobs = jobsForEmployeeOnDay(user.id, dayKey);
+                      return (
+                        <div key={`${user.id}-${dayKey}`} className="calendar-day" style={{ minHeight: 120 }}>
+                          <div className="calendar-day-content">
+                            {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
+                            {dayJobs.map((job) => (
+                              <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
+                                <div className="calendar-entry-title">{job.companyJobNumber}</div>
+                                <div className="calendar-entry-subtitle">{job.title}</div>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="calendar-month" style={{ marginTop: 20 }}>
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+                <div key={label} className="calendar-weekday">{label}</div>
+              ))}
+              {Array.from({ length: leadingEmptyDays }).map((_, index) => (
+                <div key={`empty-${index}`} className="calendar-day calendar-day-empty" />
+              ))}
+              {monthDays.map((day) => {
+                const dayJobs = jobsForDay(day);
+                return (
+                  <div key={day} className="calendar-day">
+                    <div className="calendar-day-number">{day}</div>
+                    <div className="calendar-day-content">
+                      {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
+                      {dayJobs.map((job) => {
+                        const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                        return (
+                          <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
+                            <div className="calendar-entry-title">{job.companyJobNumber}</div>
+                            <div className="calendar-entry-subtitle">{job.title}</div>
+                            <div className="calendar-entry-subtitle">
+                              {getAssignedUsersForDay(job, dayKey).length > 0
+                                ? getAssignedUsersForDay(job, dayKey).map((id) => usersById.get(id)?.fullName ?? id).join(", ")
+                                : "Unassigned"}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </article>
   );
 }

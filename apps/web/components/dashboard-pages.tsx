@@ -1,8 +1,10 @@
 "use client";
 
 import { FormEvent, Fragment, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ProtectedWorkspace } from "./protected-workspace";
 import { apiRequest } from "../lib/api";
+import { buildSession, persistSession, type AuthTokenResponse } from "../lib/auth";
 import { JOB_STATUS_VALUES, ROLE_VALUES } from "@tna-nexus/shared";
 
 function PanelGrid({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -186,6 +188,7 @@ export function TenantOverviewPage() {
 }
 
 export function AdminDashboardPage() {
+  const router = useRouter();
   const [dashboard, setDashboard] = useState<{ companies: number; subscriptions: number; demoAccounts: number; auditLogs: number } | null>(null);
   const [companies, setCompanies] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -285,6 +288,23 @@ export function AdminDashboardPage() {
     }
   }
 
+  async function handleOpenCompany(companyId: string) {
+    setError(null);
+    setSuccess(null);
+    setBusyCompanyId(companyId);
+
+    try {
+      const tokens = await apiRequest<AuthTokenResponse>(`platform-admin/companies/${companyId}/support-session`, { method: "POST" });
+      persistSession(buildSession(tokens));
+      router.replace("/dashboard");
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to open company workspace.");
+    } finally {
+      setBusyCompanyId(null);
+    }
+  }
+
   return (
     <ProtectedWorkspace allow="admin" description="Manage companies, subscriptions, and tenant provisioning." title="Platform Admin">
       {() => (
@@ -329,6 +349,14 @@ export function AdminDashboardPage() {
                       {String(company.slug)} - {String(company.status ?? "UNKNOWN")}
                     </div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <button
+                        className="button"
+                        disabled={busyCompanyId === String(company.id)}
+                        onClick={() => void handleOpenCompany(String(company.id))}
+                        type="button"
+                      >
+                        Open Dashboard
+                      </button>
                       {String(company.status) === "SUSPENDED" ? (
                         <button
                           className="button button-subtle"

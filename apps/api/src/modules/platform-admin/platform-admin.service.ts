@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Client } from "pg";
+import { AuthService } from "../../auth/auth.service";
 import { PlatformPrismaService } from "../../database/platform-prisma.service";
 import { SecretCipherService } from "../../database/secret-cipher.service";
 import { TenantPrismaFactory } from "../../database/tenant-prisma.factory";
@@ -11,7 +12,8 @@ export class PlatformAdminService {
     private readonly prisma: PlatformPrismaService,
     private readonly config: ConfigService,
     private readonly secretCipher: SecretCipherService,
-    private readonly tenantFactory: TenantPrismaFactory
+    private readonly tenantFactory: TenantPrismaFactory,
+    private readonly authService: AuthService
   ) {}
 
   dashboard() {
@@ -43,6 +45,19 @@ export class PlatformAdminService {
       where: { id: companyId },
       data: { status }
     });
+  }
+
+  async createSupportSession(companyId: string, actorEmail: string) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      include: { tenantDatabase: true }
+    });
+
+    if (!company?.tenantDatabase) {
+      throw new NotFoundException("Company workspace not found.");
+    }
+
+    return this.authService.issueSupportSession(actorEmail, company.id, company.tenantDatabase.slug);
   }
 
   async deleteCompany(companyId: string) {

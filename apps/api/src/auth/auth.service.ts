@@ -60,6 +60,25 @@ export class AuthService {
     return this.issueTokens(payload, payload.sessionId);
   }
 
+  async issueSupportSession(adminEmail: string, companyId: string, tenantSlug: string) {
+    const admin = await this.platformPrisma.platformAdmin.findUnique({
+      where: { email: adminEmail }
+    });
+
+    if (!admin) {
+      throw new UnauthorizedException("Platform admin account not found.");
+    }
+
+    return this.issueTokens({
+      sub: admin.id,
+      email: admin.email,
+      role: "PLATFORM_ADMIN",
+      companyId,
+      tenantSlug,
+      sessionId: randomUUID()
+    });
+  }
+
   private async loginWithTenantSlug(email: string, password: string, tenantSlug: string) {
     const { prisma, company } = await this.tenantAccess.getTenantContextBySlug(tenantSlug);
     this.ensureCompanyCanLogin(company.status);

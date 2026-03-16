@@ -18,6 +18,12 @@ export type LoginPayload = {
   tenantSlug?: string;
 };
 
+export type AuthTokenResponse = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: string;
+};
+
 const SESSION_STORAGE_KEY = "tna-nexus.session";
 
 function base64UrlDecode(value: string) {
@@ -34,6 +40,15 @@ function decodeAccessToken(token: string): AppSession["user"] {
   }
 
   return JSON.parse(base64UrlDecode(parts[1])) as AppSession["user"];
+}
+
+export function buildSession(tokens: AuthTokenResponse): AppSession {
+  return {
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresIn: tokens.expiresIn,
+    user: decodeAccessToken(tokens.accessToken)
+  };
 }
 
 export function getApiBaseUrl() {
@@ -70,12 +85,11 @@ export async function login(payload: LoginPayload): Promise<AppSession> {
     throw new Error(body?.message ?? "Login failed. Check your credentials and try again.");
   }
 
-  const session: AppSession = {
+  const session = buildSession({
     accessToken: body.accessToken,
     refreshToken: body.refreshToken,
-    expiresIn: body.expiresIn,
-    user: decodeAccessToken(body.accessToken)
-  };
+    expiresIn: body.expiresIn
+  });
 
   persistSession(session);
   return session;

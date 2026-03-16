@@ -36,7 +36,8 @@ export function WorkspaceShell({
 }>) {
   const pathname = usePathname();
   const router = useRouter();
-  const nav = session.user.role === "PLATFORM_ADMIN" ? adminNav : tenantNav;
+  const isSupportSession = session.user.role === "PLATFORM_ADMIN" && !!session.user.companyId && !!session.user.tenantSlug;
+  const nav = session.user.role === "PLATFORM_ADMIN" && !isSupportSession ? adminNav : tenantNav;
 
   function handleLogout() {
     clearSession();
@@ -62,6 +63,7 @@ export function WorkspaceShell({
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Link className="badge" href="/">Home</Link>
               <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a>
+              {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
             </div>
           </div>
           <div className="stack" style={{ marginTop: 28 }}>
@@ -96,7 +98,7 @@ export function WorkspaceShell({
 
         <section className="stack">
           <section className="panel" style={{ padding: 28 }}>
-            <div className="badge">{session.user.role === "PLATFORM_ADMIN" ? "Platform control" : "Company workspace"}</div>
+            <div className="badge">{session.user.role === "PLATFORM_ADMIN" && !isSupportSession ? "Platform control" : "Company workspace"}</div>
             <h1 style={{ margin: "14px 0 8px", fontSize: 34 }}>{title}</h1>
             <p className="muted" style={{ margin: 0 }}>{description}</p>
           </section>

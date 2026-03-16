@@ -27,12 +27,14 @@ export function ProtectedWorkspace({
       return;
     }
 
+    const isSupportSession = nextSession.user.role === "PLATFORM_ADMIN" && !!nextSession.user.companyId && !!nextSession.user.tenantSlug;
+
     if (allow === "admin" && nextSession.user.role !== "PLATFORM_ADMIN") {
       router.replace("/dashboard");
       return;
     }
 
-    if (allow === "tenant" && nextSession.user.role === "PLATFORM_ADMIN") {
+    if (allow === "tenant" && nextSession.user.role === "PLATFORM_ADMIN" && !isSupportSession) {
       router.replace("/dashboard/admin");
       return;
     }

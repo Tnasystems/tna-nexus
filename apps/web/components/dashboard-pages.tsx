@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Fragment, useEffect, useState } from "react";
 import { ProtectedWorkspace } from "./protected-workspace";
 import { apiRequest } from "../lib/api";
 import { JOB_STATUS_VALUES, ROLE_VALUES } from "@tna-nexus/shared";
@@ -413,9 +413,14 @@ function createCrudPage(config: {
 }
 
 export function JobsPage() {
-  const [jobs, setJobs] = useState<Array<Record<string, unknown>>>([]);
-  const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const current = new Date();
+    return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
+  });
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -437,8 +442,8 @@ export function JobsPage() {
   async function load() {
     try {
       const [nextJobs, nextUsers] = await Promise.all([
-        apiRequest<Array<Record<string, unknown>>>("jobs"),
-        apiRequest<Array<Record<string, unknown>>>("users")
+        apiRequest<JobRecord[]>("jobs"),
+        apiRequest<UserRecord[]>("users")
       ]);
       setJobs(nextJobs);
       setUsers(nextUsers);
@@ -450,6 +455,19 @@ export function JobsPage() {
 
   useEffect(() => { void load(); }, []);
 
+  const [year, month] = calendarMonth.split("-").map((part) => Number(part));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const jobsForMonth = jobs.filter((job) => {
+    if (!job.scheduledFor) {
+      return false;
+    }
+
+    const scheduled = new Date(job.scheduledFor);
+    return scheduled.getFullYear() === year && scheduled.getMonth() + 1 === month;
+  });
+
   function toggleOperative(userId: string) {
     setForm((current) => ({
       ...current,
@@ -459,9 +477,7 @@ export function JobsPage() {
     }));
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await apiRequest("jobs", { method: "POST", body: JSON.stringify(form) });
+  function resetForm() {
     setForm({
       title: "",
       companyJobNumber: "",
@@ -471,15 +487,93 @@ export function JobsPage() {
       scheduledFor: "",
       assignedOperativeIds: []
     });
+    setEditingJobId(null);
+  }
+
+  function startEdit(job: JobRecord) {
+    setEditingJobId(job.id);
+    setForm({
+      title: job.title,
+      companyJobNumber: job.companyJobNumber,
+      customerJobNumber: job.customerJobNumber,
+      siteAddress: job.siteAddress,
+      status: job.status,
+      scheduledFor: job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 16) : "",
+      assignedOperativeIds: job.assignedOperativeIds ?? []
+    });
+  }
+
+  function jobsForUserOnDay(userId: string, day: number) {
+    return jobsForMonth.filter((job) => {
+      if (!job.scheduledFor || !(job.assignedOperativeIds ?? []).includes(userId)) {
+        return false;
+      }
+
+      return new Date(job.scheduledFor).getDate() === day;
+    });
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (editingJobId) {
+      await apiRequest(`jobs/${editingJobId}`, { method: "PATCH", body: JSON.stringify(form) });
+    } else {
+      await apiRequest("jobs", { method: "POST", body: JSON.stringify(form) });
+    }
+    resetForm();
     await load();
   }
 
   return (
     <ProtectedWorkspace allow="tenant" description="Create and track operational jobs across sites." title="Jobs">
       {() => (
-        <PanelGrid>
+        <div className="stack">
           <article className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0 }}>Create job</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Job calendar</h2>
+                <div className="muted" style={{ marginTop: 8 }}>Assignments by employee and day for the selected month.</div>
+              </div>
+              <label className="field" style={{ minWidth: 220 }}>
+                <span>Calendar month</span>
+                <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
+              </label>
+            </div>
+            <div className="calendar-wrap" style={{ marginTop: 20 }}>
+              <div className="jobs-calendar">
+                <div className="calendar-corner">Employee</div>
+                {monthDays.map((day) => (
+                  <div key={day} className="calendar-head">{day}</div>
+                ))}
+                {users.map((user) => (
+                  <Fragment key={user.id}>
+                    <div className="calendar-name">{user.fullName}</div>
+                    {monthDays.map((day) => {
+                      const assignedJobs = jobsForUserOnDay(user.id, day);
+                      return (
+                        <div key={`${user.id}-${day}`} className="calendar-cell">
+                          {assignedJobs.map((job) => (
+                            <button
+                              key={job.id}
+                              className="calendar-job"
+                              onClick={() => startEdit(job)}
+                              type="button"
+                            >
+                              {job.companyJobNumber}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+          </article>
+
+          <PanelGrid>
+            <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>{editingJobId ? "Edit job" : "Create job"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
               <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
               <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
@@ -502,7 +596,12 @@ export function JobsPage() {
                   ))}
                 </div>
               </div>
-              <button className="button" type="submit">Create Job</button>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button className="button" type="submit">{editingJobId ? "Save Changes" : "Create Job"}</button>
+                {editingJobId ? (
+                  <button className="button button-subtle" onClick={resetForm} type="button">Cancel Edit</button>
+                ) : null}
+              </div>
             </form>
             <ErrorText error={error} />
           </article>
@@ -510,17 +609,29 @@ export function JobsPage() {
             <h2 style={{ marginTop: 0 }}>Job board</h2>
             <div className="stack">
               {jobs.map((job) => (
-                <div key={String(job.id)} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
-                  <div style={{ fontWeight: 700 }}>{String(job.title)}</div>
-                  <div className="muted">
-                    {String(job.companyJobNumber)} / {String(job.customerJobNumber)} - {String(job.status)}
+                <div key={job.id} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+                    <div style={{ fontWeight: 700 }}>{job.title}</div>
+                    <button className="button button-subtle" onClick={() => startEdit(job)} type="button">Edit</button>
                   </div>
-                  <div className="muted">{String(job.siteAddress)}</div>
+                  <div className="muted">
+                    {job.companyJobNumber} / {job.customerJobNumber} - {job.status}
+                  </div>
+                  <div className="muted">{job.siteAddress}</div>
+                  <div className="muted">
+                    Scheduled: {job.scheduledFor ? new Date(job.scheduledFor).toLocaleString() : "Not scheduled"}
+                  </div>
+                  <div className="muted">
+                    Assigned: {job.assignedOperativeIds.length > 0
+                      ? job.assignedOperativeIds.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
+                      : "Unassigned"}
+                  </div>
                 </div>
               ))}
             </div>
           </article>
         </PanelGrid>
+        </div>
       )}
     </ProtectedWorkspace>
   );
@@ -732,22 +843,6 @@ export function FormsPage() {
   );
 }
 
-export const CompliancePage = createCrudPage({
-  title: "Compliance",
-  description: "Track deadlines, inspections, and open risk items.",
-  path: "compliance",
-  fields: [
-    { key: "title", label: "Title" },
-    { key: "dueDate", label: "Due date", type: "date" }
-  ],
-  list: (item) => (
-    <>
-      <div style={{ fontWeight: 700 }}>{String(item.title)}</div>
-      <div className="muted">{new Date(String(item.dueDate)).toLocaleDateString()} - {String(item.status)}</div>
-    </>
-  )
-});
-
 export function NotificationsPage() {
   const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -822,7 +917,7 @@ export function ReportingPage() {
             {[
               { label: "Jobs", value: summary?.jobs ?? 0 },
               { label: "Completed", value: summary?.completedJobs ?? 0 },
-              { label: "Compliance Open", value: summary?.openCompliance ?? 0 },
+              { label: "Open Actions", value: summary?.openCompliance ?? 0 },
               { label: "Active Users", value: summary?.activeUsers ?? 0 }
             ].map((metric) => (
               <article key={metric.label} className="panel" style={{ padding: 22 }}>

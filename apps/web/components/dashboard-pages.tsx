@@ -520,6 +520,8 @@ function createCrudPage(config: {
 export function JobsPage() {
   const { jobs, users, error, reload } = useJobsAndUsers();
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -538,10 +540,31 @@ export function JobsPage() {
     dailyAssignments: {}
   });
   const [selectedDay, setSelectedDay] = useState("");
-  const [selectedAssignmentDay, setSelectedAssignmentDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
+
+  function buildDateRange(start: string, end: string) {
+    if (!start || !end) {
+      return [] as string[];
+    }
+
+    const startDate = new Date(`${start}T00:00:00`);
+    const endDate = new Date(`${end}T00:00:00`);
+
+    if (endDate < startDate) {
+      return [] as string[];
+    }
+
+    const days: string[] = [];
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      days.push(toDateKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return days;
+  }
 
   function addScheduledDay() {
     if (!selectedDay) {
@@ -557,8 +580,22 @@ export function JobsPage() {
         ? current.dailyAssignments
         : { ...current.dailyAssignments, [selectedDay]: [] }
     }));
-    setSelectedAssignmentDay(selectedDay);
     setSelectedDay("");
+  }
+
+  function applyDateRange() {
+    const days = buildDateRange(rangeStart, rangeEnd);
+    if (days.length === 0) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      scheduledDays: days,
+      dailyAssignments: Object.fromEntries(
+        days.map((day) => [day, current.dailyAssignments[day] ?? []])
+      )
+    }));
   }
 
   function removeScheduledDay(day: string) {
@@ -569,24 +606,23 @@ export function JobsPage() {
         Object.entries(current.dailyAssignments).filter(([entry]) => entry !== day)
       )
     }));
-    if (selectedAssignmentDay === day) {
-      setSelectedAssignmentDay("");
-    }
   }
 
   function addOperative() {
-    if (!selectedOperativeId || !selectedAssignmentDay) {
+    if (!selectedOperativeId || form.scheduledDays.length === 0) {
       return;
     }
 
     setForm((current) => ({
       ...current,
-      dailyAssignments: {
-        ...current.dailyAssignments,
-        [selectedAssignmentDay]: current.dailyAssignments[selectedAssignmentDay]?.includes(selectedOperativeId)
-          ? current.dailyAssignments[selectedAssignmentDay]
-          : [...(current.dailyAssignments[selectedAssignmentDay] ?? []), selectedOperativeId]
-      }
+      dailyAssignments: Object.fromEntries(
+        current.scheduledDays.map((day) => [
+          day,
+          current.dailyAssignments[day]?.includes(selectedOperativeId)
+            ? current.dailyAssignments[day]
+            : [...(current.dailyAssignments[day] ?? []), selectedOperativeId]
+        ])
+      )
     }));
     setSelectedOperativeId("");
   }
@@ -612,7 +648,8 @@ export function JobsPage() {
       dailyAssignments: {}
     });
     setSelectedDay("");
-    setSelectedAssignmentDay("");
+    setRangeStart("");
+    setRangeEnd("");
     setSelectedOperativeId("");
     setEditingJobId(null);
   }
@@ -633,7 +670,8 @@ export function JobsPage() {
         scheduledDays.map((day) => [day, getAssignedUsersForDay(job, day)])
       )
     });
-    setSelectedAssignmentDay(scheduledDays[0] ?? "");
+    setRangeStart(scheduledDays[0] ?? "");
+    setRangeEnd(scheduledDays[scheduledDays.length - 1] ?? "");
   }
 
   useEffect(() => {
@@ -671,6 +709,23 @@ export function JobsPage() {
     await reload();
   }
 
+  const assignmentWarnings = form.scheduledDays.flatMap((day) =>
+    (form.dailyAssignments[day] ?? []).flatMap((userId) => {
+      const conflicts = jobs.filter((job) =>
+        job.id !== editingJobId &&
+        getAssignedUsersForDay(job, day).includes(userId)
+      );
+
+      return conflicts.map((job) => ({
+        day,
+        userId,
+        userName: usersById.get(userId)?.fullName ?? userId,
+        jobTitle: job.title,
+        companyJobNumber: job.companyJobNumber
+      }));
+    })
+  );
+
   return (
     <ProtectedWorkspace allow="tenant" description="Create and track operational jobs across sites." title="Jobs">
       {() => (
@@ -684,13 +739,17 @@ export function JobsPage() {
               <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
               <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
               <div className="field">
-                <span>Scheduled days</span>
+                <span>Schedule range</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
                   <label className="field" style={{ flex: "1 1 220px" }}>
-                    <span>Select day</span>
-                    <input className="input" onChange={(event) => setSelectedDay(event.target.value)} type="date" value={selectedDay} />
+                    <span>Start date</span>
+                    <input className="input" onChange={(event) => setRangeStart(event.target.value)} type="date" value={rangeStart} />
                   </label>
-                  <button className="button button-subtle" onClick={addScheduledDay} type="button">Add Day</button>
+                  <label className="field" style={{ flex: "1 1 220px" }}>
+                    <span>Finish date</span>
+                    <input className="input" onChange={(event) => setRangeEnd(event.target.value)} type="date" value={rangeEnd} />
+                  </label>
+                  <button className="button button-subtle" onClick={applyDateRange} type="button">Apply Range</button>
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {form.scheduledDays.length === 0 ? <div className="muted">No days selected.</div> : null}
@@ -701,19 +760,17 @@ export function JobsPage() {
                     </div>
                   ))}
                 </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                  <label className="field" style={{ flex: "1 1 220px" }}>
+                    <span>Add one extra day</span>
+                    <input className="input" onChange={(event) => setSelectedDay(event.target.value)} type="date" value={selectedDay} />
+                  </label>
+                  <button className="button button-subtle" onClick={addScheduledDay} type="button">Add Single Day</button>
+                </div>
               </div>
               <div className="field">
                 <span>Assign operatives by day</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
-                  <label className="field" style={{ flex: "1 1 220px" }}>
-                    <span>Assignment day</span>
-                    <select className="input" onChange={(event) => setSelectedAssignmentDay(event.target.value)} value={selectedAssignmentDay}>
-                      <option value="">Choose a scheduled day</option>
-                      {form.scheduledDays.map((day) => (
-                        <option key={day} value={day}>{new Date(`${day}T00:00:00`).toLocaleDateString()}</option>
-                      ))}
-                    </select>
-                  </label>
                   <label className="field" style={{ flex: "1 1 260px" }}>
                     <span>Select team member</span>
                     <select className="input" onChange={(event) => setSelectedOperativeId(event.target.value)} value={selectedOperativeId}>
@@ -723,8 +780,18 @@ export function JobsPage() {
                       ))}
                     </select>
                   </label>
-                  <button className="button button-subtle" onClick={addOperative} type="button">Add to Job</button>
+                  <button className="button button-subtle" onClick={addOperative} type="button">Add to Entire Job</button>
                 </div>
+                {assignmentWarnings.length > 0 ? (
+                  <div className="error-banner">
+                    {assignmentWarnings.map((warning) => (
+                      <div key={`${warning.day}-${warning.userId}-${warning.companyJobNumber}`}>
+                        {warning.userName} already has {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
+                        Remove them from that day below if they need relocating.
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="stack">
                   {form.scheduledDays.length === 0 ? <div className="muted">Add scheduled days before assigning people.</div> : null}
                   {form.scheduledDays.map((day) => (

@@ -13,6 +13,20 @@ export class JobsService {
     return prisma.job.findMany({ include: { tasks: true }, orderBy: { createdAt: "desc" } });
   }
 
+  async get(user: JwtUser, jobId: string) {
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: { tasks: true }
+    });
+
+    if (!job) {
+      throw new NotFoundException("Job not found.");
+    }
+
+    return job;
+  }
+
   async create(user: JwtUser, dto: CreateJobDto) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.buildScheduling(dto);

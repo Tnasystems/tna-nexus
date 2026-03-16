@@ -18,6 +18,11 @@ export class JobsController {
     return this.service.list(user);
   }
 
+  @Get(":jobId")
+  get(@CurrentUser() user: JwtUser, @Param("jobId") jobId: string) {
+    return this.service.get(user, jobId);
+  }
+
   @Post()
   create(@CurrentUser() user: JwtUser, @Body() body: CreateJobDto) {
     return this.service.create(user, body);

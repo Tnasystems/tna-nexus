@@ -101,6 +101,7 @@ interface JobRecord {
   scheduledDays: string[];
   dailyAssignmentsJson: string;
   assignedOperativeIds: string[];
+  tasks?: Array<{ id: string; title: string; status: string }>;
 }
 
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
@@ -140,6 +141,10 @@ function getJobDailyAssignments(job: JobRecord) {
 
 function getAssignedUsersForDay(job: JobRecord, day: string) {
   return getJobDailyAssignments(job)[day] ?? [];
+}
+
+function jobDetailHref(jobId: string, tab: "details" | "schedule" = "details") {
+  return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
 
 function startOfWeek(day: Date) {
@@ -927,7 +932,9 @@ export function JobsPage() {
                 <div key={job.id} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
                     <div style={{ fontWeight: 700 }}>{job.title}</div>
-                    <button className="button button-subtle" onClick={() => startEdit(job)} type="button">Edit</button>
+                    <Link className="button button-subtle" href={jobDetailHref(job.id)}>
+                      Open
+                    </Link>
                   </div>
                   <div className="muted">
                     {job.companyJobNumber} / {job.customerJobNumber} - {job.status}
@@ -951,6 +958,390 @@ export function JobsPage() {
             </div>
           </article>
         </PanelGrid>
+      )}
+    </ProtectedWorkspace>
+  );
+}
+
+export function JobRecordPage({
+  initialTab = "details",
+  jobId
+}: Readonly<{
+  initialTab?: "details" | "schedule";
+  jobId: string;
+}>) {
+  const [job, setJob] = useState<JobRecord | null>(null);
+  const [allJobs, setAllJobs] = useState<JobRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"details" | "schedule">(initialTab);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [selectedDay, setSelectedDay] = useState("");
+  const [selectedOperativeId, setSelectedOperativeId] = useState("");
+  const [form, setForm] = useState({
+    title: "",
+    companyJobNumber: "",
+    customerJobNumber: "",
+    siteAddress: "",
+    status: JOB_STATUS_VALUES[1],
+    scheduledStartTime: "08:00",
+    scheduledEndTime: "17:00",
+    scheduledDays: [] as string[],
+    dailyAssignments: {} as Record<string, string[]>
+  });
+
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
+
+  async function load() {
+    try {
+      const [nextJob, nextUsers, nextJobs] = await Promise.all([
+        apiRequest<JobRecord>(`jobs/${jobId}`),
+        apiRequest<UserRecord[]>("users"),
+        apiRequest<JobRecord[]>("jobs")
+      ]);
+      setJob(nextJob);
+      setUsers(nextUsers);
+      setAllJobs(nextJobs);
+      const scheduledDays = (nextJob.scheduledDays ?? []).length > 0
+        ? [...nextJob.scheduledDays].sort()
+        : [nextJob.scheduledFor ? new Date(nextJob.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
+      setForm({
+        title: nextJob.title,
+        companyJobNumber: nextJob.companyJobNumber,
+        customerJobNumber: nextJob.customerJobNumber,
+        siteAddress: nextJob.siteAddress,
+        status: nextJob.status,
+        scheduledStartTime: nextJob.scheduledStartTime ?? "08:00",
+        scheduledEndTime: nextJob.scheduledEndTime ?? "17:00",
+        scheduledDays,
+        dailyAssignments: Object.fromEntries(
+          scheduledDays.map((day) => [day, getAssignedUsersForDay(nextJob, day)])
+        )
+      });
+      setRangeStart(scheduledDays[0] ?? "");
+      setRangeEnd(scheduledDays[scheduledDays.length - 1] ?? "");
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to load job.");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [jobId]);
+
+  function buildDateRange(start: string, end: string) {
+    if (!start || !end) {
+      return [] as string[];
+    }
+
+    const startDate = new Date(`${start}T00:00:00`);
+    const endDate = new Date(`${end}T00:00:00`);
+    if (endDate < startDate) {
+      return [] as string[];
+    }
+
+    const days: string[] = [];
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      days.push(toDateKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return days;
+  }
+
+  function applyDateRange() {
+    const days = buildDateRange(rangeStart, rangeEnd);
+    if (days.length === 0) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      scheduledDays: days,
+      dailyAssignments: Object.fromEntries(days.map((day) => [day, current.dailyAssignments[day] ?? []]))
+    }));
+  }
+
+  function addScheduledDay() {
+    if (!selectedDay) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      scheduledDays: current.scheduledDays.includes(selectedDay) ? current.scheduledDays : [...current.scheduledDays, selectedDay].sort(),
+      dailyAssignments: current.dailyAssignments[selectedDay]
+        ? current.dailyAssignments
+        : { ...current.dailyAssignments, [selectedDay]: [] }
+    }));
+    setSelectedDay("");
+  }
+
+  function removeScheduledDay(day: string) {
+    setForm((current) => ({
+      ...current,
+      scheduledDays: current.scheduledDays.filter((entry) => entry !== day),
+      dailyAssignments: Object.fromEntries(Object.entries(current.dailyAssignments).filter(([entry]) => entry !== day))
+    }));
+  }
+
+  function addOperative() {
+    if (!selectedOperativeId || form.scheduledDays.length === 0) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      dailyAssignments: Object.fromEntries(
+        current.scheduledDays.map((day) => [
+          day,
+          current.dailyAssignments[day]?.includes(selectedOperativeId)
+            ? current.dailyAssignments[day]
+            : [...(current.dailyAssignments[day] ?? []), selectedOperativeId]
+        ])
+      )
+    }));
+    setSelectedOperativeId("");
+  }
+
+  function removeOperative(day: string, userId: string) {
+    setForm((current) => ({
+      ...current,
+      dailyAssignments: {
+        ...current.dailyAssignments,
+        [day]: (current.dailyAssignments[day] ?? []).filter((id) => id !== userId)
+      }
+    }));
+  }
+
+  const overlapWarnings = form.scheduledDays.flatMap((day) =>
+    (form.dailyAssignments[day] ?? []).flatMap((userId) => {
+      if (!job) {
+        return [];
+      }
+
+      const currentDraft: JobRecord = {
+        ...job,
+        title: form.title,
+        companyJobNumber: form.companyJobNumber,
+        customerJobNumber: form.customerJobNumber,
+        siteAddress: form.siteAddress,
+        status: form.status,
+        scheduledStartTime: form.scheduledStartTime || null,
+        scheduledEndTime: form.scheduledEndTime || null,
+        scheduledDays: form.scheduledDays,
+        dailyAssignmentsJson: JSON.stringify(form.dailyAssignments),
+        assignedOperativeIds: [...new Set(Object.values(form.dailyAssignments).flat())]
+      };
+
+      const conflicts = allJobs.filter((candidate) =>
+        candidate.id !== job.id &&
+        getAssignedUsersForDay(candidate, day).includes(userId) &&
+        jobsOverlapByTime(currentDraft, candidate)
+      );
+
+      return conflicts.map((candidate) => ({
+        day,
+        userId,
+        userName: usersById.get(userId)?.fullName ?? userId,
+        jobTitle: candidate.title,
+        companyJobNumber: candidate.companyJobNumber
+      }));
+    })
+  );
+  void overlapWarnings;
+
+  async function handleSave() {
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`jobs/${jobId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...form,
+          scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
+          scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
+          scheduledStartTime: form.scheduledStartTime || undefined,
+          scheduledEndTime: form.scheduledEndTime || undefined,
+          dailyAssignments: Object.fromEntries(
+            form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
+          )
+        })
+      });
+      setSuccess("Job updated successfully.");
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to save job.");
+    }
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Review a single job record and manage its scheduling." title={job ? job.title : "Job Record"}>
+      {() => (
+        <div className="stack">
+          <ErrorText error={error} />
+          {success ? <div className="panel" style={{ padding: 18, borderRadius: 18 }}>{success}</div> : null}
+          <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
+              {[
+                { key: "details" as const, label: "Details" },
+                { key: "schedule" as const, label: "Schedule" }
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  className={activeTab === tab.key ? "button" : "button button-subtle"}
+                  onClick={() => setActiveTab(tab.key)}
+                  style={{ borderRadius: 0, minWidth: 140 }}
+                  type="button"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: 24 }}>
+              {activeTab === "details" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
+                  <div className="stack">
+                    <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
+                      <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
+                    </div>
+                    <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
+                    <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
+                    <button className="button" onClick={handleSave} type="button">Save Job</button>
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div className="stack">
+                      <div>
+                        <div className="muted">Job number</div>
+                        <div style={{ fontWeight: 800 }}>{form.companyJobNumber || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Working hours</div>
+                        <div style={{ fontWeight: 700 }}>
+                          {form.scheduledStartTime && form.scheduledEndTime ? `${form.scheduledStartTime} - ${form.scheduledEndTime}` : "Not set"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="muted">Tasks</div>
+                        <div style={{ fontWeight: 700 }}>{job?.tasks?.length ?? 0}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+                  <div className="stack">
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <TextField label="Working start time" onChange={(value) => setForm((current) => ({ ...current, scheduledStartTime: value }))} type="time" value={form.scheduledStartTime} />
+                      <TextField label="Working finish time" onChange={(value) => setForm((current) => ({ ...current, scheduledEndTime: value }))} type="time" value={form.scheduledEndTime} />
+                    </div>
+                    <div className="field">
+                      <span>Schedule range</span>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                        <label className="field" style={{ flex: "1 1 220px" }}>
+                          <span>Preferred start</span>
+                          <input className="input" onChange={(event) => setRangeStart(event.target.value)} type="date" value={rangeStart} />
+                        </label>
+                        <label className="field" style={{ flex: "1 1 220px" }}>
+                          <span>Preferred finish</span>
+                          <input className="input" onChange={(event) => setRangeEnd(event.target.value)} type="date" value={rangeEnd} />
+                        </label>
+                        <button className="button button-subtle" onClick={applyDateRange} type="button">Apply Range</button>
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {form.scheduledDays.map((day) => (
+                          <div key={day} className="assignment-pill">
+                            <span>{new Date(`${day}T00:00:00`).toLocaleDateString()}</span>
+                            <button className="assignment-pill-remove" onClick={() => removeScheduledDay(day)} type="button">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="field">
+                      <span>Assigned to</span>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                        <label className="field" style={{ flex: "1 1 260px" }}>
+                          <span>Select operative</span>
+                          <select className="input" onChange={(event) => setSelectedOperativeId(event.target.value)} value={selectedOperativeId}>
+                            <option value="">Choose a team member</option>
+                            {operativeOptions.map((user) => (
+                              <option key={user.id} value={user.id}>{user.fullName}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button className="button button-subtle" onClick={addOperative} type="button">Assign Across Job</button>
+                      </div>
+                      {overlapWarnings.length > 0 ? (
+                        <div className="error-banner">
+                          {overlapWarnings.map((warning) => (
+                            <div key={`${warning.day}-${warning.userId}-${warning.companyJobNumber}`}>
+                              {warning.userName} overlaps with {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="stack">
+                        {form.scheduledDays.map((day) => (
+                          <div key={day} className="panel" style={{ padding: 16 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 10 }}>{new Date(`${day}T00:00:00`).toLocaleDateString()}</div>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              {(form.dailyAssignments[day] ?? []).length === 0 ? <div className="muted">Unassigned</div> : null}
+                              {(form.dailyAssignments[day] ?? []).map((userId) => (
+                                <div key={`${day}-${userId}`} className="assignment-pill">
+                                  <span>{usersById.get(userId)?.fullName ?? userId}</span>
+                                  <button className="assignment-pill-remove" onClick={() => removeOperative(day, userId)} type="button">Remove</button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <button className="button" onClick={handleSave} type="button">Save Schedule</button>
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div className="stack">
+                      <div>
+                        <div className="muted">Current assignment</div>
+                        <div style={{ fontWeight: 700 }}>
+                          {form.scheduledDays.flatMap((day) => form.dailyAssignments[day] ?? []).length > 0
+                            ? [...new Set(form.scheduledDays.flatMap((day) => form.dailyAssignments[day] ?? []))].map((userId) => usersById.get(userId)?.fullName ?? userId).join(", ")
+                            : "No operatives assigned"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="muted">Scheduled dates</div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {form.scheduledDays.map((day) => (
+                            <div key={day}>{new Date(`${day}T00:00:00`).toLocaleDateString()}</div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="muted">Tasks</div>
+                        <div className="stack" style={{ gap: 10 }}>
+                          {(job?.tasks ?? []).map((task) => (
+                            <div key={task.id} className="panel" style={{ padding: 12 }}>
+                              <div style={{ fontWeight: 700 }}>{task.title}</div>
+                              <div className="muted">{task.status}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </ProtectedWorkspace>
   );
@@ -1161,7 +1552,7 @@ function CalendarWorkspace({
                             <Link
                               key={job.id}
                               className="schedule-job-chip"
-                              href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}
+                              href={jobDetailHref(job.id, "schedule")}
                               style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey, user.id))}
                             >
                               <div className="schedule-job-chip-code">{job.companyJobNumber}</div>
@@ -1197,7 +1588,7 @@ function CalendarWorkspace({
                 {visibleJobsForBoard.map((job) => (
                   <Fragment key={job.id}>
                     <div className="jobs-board-job">
-                      <Link href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
+                      <Link href={jobDetailHref(job.id)}>
                         <div className="jobs-board-job-code">{job.companyJobNumber}</div>
                         <div className="jobs-board-job-title">{job.title}</div>
                       </Link>
@@ -1212,7 +1603,7 @@ function CalendarWorkspace({
                           {scheduled ? (
                             <Link
                               className="jobs-board-chip"
-                              href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}
+                              href={jobDetailHref(job.id, "schedule")}
                               style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey))}
                               title={`${job.companyJobNumber} - ${job.title}${job.scheduledStartTime && job.scheduledEndTime ? ` (${job.scheduledStartTime}-${job.scheduledEndTime})` : ""}`}
                             >

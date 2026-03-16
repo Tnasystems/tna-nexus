@@ -56,38 +56,93 @@ async function main() {
     const tenantFactory = new TenantPrismaFactory();
     const tenantPrisma = tenantFactory.getClient(tenantUrl);
 
-    const ownerId = randomUUID();
-    await tenantPrisma.user.create({
-      data: {
-        id: ownerId,
-        email: "owner@demo-industrial.local",
-        fullName: "Demo Company Owner",
-        role: "DIRECTOR",
-        passwordHash: await argon2.hash("ChangeMe123!")
-      }
+    const defaultPasswordHash = await argon2.hash("ChangeMe123!");
+    const team = [
+      { id: randomUUID(), email: "director@demo-industrial.local", fullName: "Alicia Warren", role: "DIRECTOR" },
+      { id: randomUUID(), email: "manager@demo-industrial.local", fullName: "Marcus Cole", role: "MANAGER" },
+      { id: randomUUID(), email: "operative1@demo-industrial.local", fullName: "Sanjay Patel", role: "OPERATIVE" },
+      { id: randomUUID(), email: "operative2@demo-industrial.local", fullName: "Amy Reeves", role: "OPERATIVE" },
+      { id: randomUUID(), email: "operative3@demo-industrial.local", fullName: "Chris Moore", role: "OPERATIVE" }
+    ] as const;
+
+    await tenantPrisma.user.createMany({
+      data: team.map((member) => ({
+        ...member,
+        passwordHash: defaultPasswordHash
+      }))
     });
 
-    const jobId = randomUUID();
-    await tenantPrisma.job.create({
-      data: {
-        id: jobId,
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 8, 0, 0, 0);
+    const jobs = [
+      {
+        id: randomUUID(),
         title: "Quarterly inspection run",
         companyJobNumber: "TNA-DEMO-0001",
         customerJobNumber: "CUST-DEMO-4812",
         siteAddress: "10 Foundry Way, Birmingham",
         status: "SCHEDULED",
-        scheduledFor: new Date(),
-        assignedOperativeIds: [ownerId]
-      }
-    });
-
-    await tenantPrisma.task.create({
-      data: {
+        scheduledFor: new Date(startOfDay.getTime()),
+        scheduledTo: new Date(startOfDay.getTime() + 8 * 60 * 60 * 1000),
+        assignedOperativeIds: [team[2].id]
+      },
+      {
         id: randomUUID(),
-        jobId,
-        title: "Complete site risk assessment",
-        status: "PENDING"
+        title: "Warehouse shutter repair",
+        companyJobNumber: "TNA-DEMO-0002",
+        customerJobNumber: "CUST-DEMO-5007",
+        siteAddress: "Riverside Trade Park, Leeds",
+        status: "IN_PROGRESS",
+        scheduledFor: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (2 * 24 + 8) * 60 * 60 * 1000),
+        assignedOperativeIds: [team[3].id, team[4].id]
+      },
+      {
+        id: randomUUID(),
+        title: "Boiler plant annual service",
+        companyJobNumber: "TNA-DEMO-0003",
+        customerJobNumber: "CUST-DEMO-5112",
+        siteAddress: "Kingsway Industrial Estate, Manchester",
+        status: "SCHEDULED",
+        scheduledFor: new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (5 * 24 + 8) * 60 * 60 * 1000),
+        assignedOperativeIds: [team[2].id, team[3].id]
+      },
+      {
+        id: randomUUID(),
+        title: "Lighting survey and remedials",
+        companyJobNumber: "TNA-DEMO-0004",
+        customerJobNumber: "CUST-DEMO-5220",
+        siteAddress: "Aston Logistics Hub, Birmingham",
+        status: "SCHEDULED",
+        scheduledFor: new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (7 * 24 + 6) * 60 * 60 * 1000),
+        assignedOperativeIds: [team[4].id]
+      },
+      {
+        id: randomUUID(),
+        title: "Emergency callout follow-up",
+        companyJobNumber: "TNA-DEMO-0005",
+        customerJobNumber: "CUST-DEMO-5305",
+        siteAddress: "North Dock Works, Liverpool",
+        status: "SCHEDULED",
+        scheduledFor: new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (11 * 24 + 8) * 60 * 60 * 1000),
+        assignedOperativeIds: [team[2].id, team[4].id]
       }
+    ] as const;
+
+    await tenantPrisma.job.createMany({ data: jobs });
+
+    await tenantPrisma.task.createMany({
+      data: [
+        { id: randomUUID(), jobId: jobs[0].id, title: "Complete site risk assessment", status: "PENDING" },
+        { id: randomUUID(), jobId: jobs[0].id, title: "Upload inspection photos", status: "PENDING" },
+        { id: randomUUID(), jobId: jobs[1].id, title: "Replace failed shutter motor", status: "IN_PROGRESS" },
+        { id: randomUUID(), jobId: jobs[2].id, title: "Service burners and gas train", status: "PENDING" },
+        { id: randomUUID(), jobId: jobs[3].id, title: "Verify emergency lighting certificates", status: "PENDING" },
+        { id: randomUUID(), jobId: jobs[4].id, title: "Confirm remedial completion", status: "PENDING" }
+      ]
     });
 
     await tenantPrisma.asset.create({
@@ -119,6 +174,25 @@ async function main() {
           ]
         })
       }
+    });
+
+    await tenantPrisma.notification.createMany({
+      data: [
+        {
+          id: randomUUID(),
+          title: "Week-ahead schedule published",
+          body: "Managers have published the upcoming week schedule for all operatives.",
+          channel: "Ops",
+          status: "QUEUED"
+        },
+        {
+          id: randomUUID(),
+          title: "Warehouse shutter repair updated",
+          body: "Parts confirmed and site attendance extended into tomorrow.",
+          channel: "Field",
+          status: "SENT"
+        }
+      ]
     });
   }
 

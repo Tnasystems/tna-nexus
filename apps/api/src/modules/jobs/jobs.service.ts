@@ -26,6 +26,8 @@ export class JobsService {
         status: dto.status,
         scheduledFor: this.toDateBoundary(dto.scheduledFor, scheduledDays[0], "start"),
         scheduledTo: this.toDateBoundary(dto.scheduledTo, scheduledDays[scheduledDays.length - 1], "end"),
+        scheduledStartTime: dto.scheduledStartTime ?? null,
+        scheduledEndTime: dto.scheduledEndTime ?? null,
         scheduledDays,
         dailyAssignmentsJson: JSON.stringify(dailyAssignments),
         assignedOperativeIds
@@ -60,6 +62,8 @@ export class JobsService {
         scheduledDays: dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
           ? undefined
           : scheduling.scheduledDays,
+        scheduledStartTime: dto.scheduledStartTime ?? undefined,
+        scheduledEndTime: dto.scheduledEndTime ?? undefined,
         dailyAssignmentsJson: dto.dailyAssignments === undefined && dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
           ? undefined
           : JSON.stringify(scheduling.dailyAssignments),

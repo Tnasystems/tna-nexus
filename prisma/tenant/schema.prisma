@@ -29,6 +29,8 @@ model Job {
   status              String
   scheduledFor        DateTime?
   scheduledTo         DateTime?
+  scheduledStartTime  String?
+  scheduledEndTime    String?
   scheduledDays       String[]
   dailyAssignmentsJson String   @default("{}")
   assignedOperativeIds String[]

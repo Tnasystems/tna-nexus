@@ -96,6 +96,8 @@ interface JobRecord {
   status: string;
   scheduledFor: string | null;
   scheduledTo: string | null;
+  scheduledStartTime: string | null;
+  scheduledEndTime: string | null;
   scheduledDays: string[];
   dailyAssignmentsJson: string;
   assignedOperativeIds: string[];
@@ -164,6 +166,53 @@ function getJobChipStyle(status: string) {
   }
 
   return { background: "rgba(96, 165, 250, 0.24)", borderColor: "rgba(96, 165, 250, 0.42)", color: "#deebff" };
+}
+
+function getJobVisualStyle(job: JobRecord, hasConflict: boolean) {
+  if (hasConflict) {
+    return { background: "rgba(251, 113, 133, 0.22)", borderColor: "rgba(251, 113, 133, 0.5)", color: "#ffe1e6" };
+  }
+
+  return getJobChipStyle(job.status);
+}
+
+function toMinutes(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const [hours, minutes] = value.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function jobsOverlapByTime(first: JobRecord, second: JobRecord) {
+  const firstStart = toMinutes(first.scheduledStartTime);
+  const firstEnd = toMinutes(first.scheduledEndTime);
+  const secondStart = toMinutes(second.scheduledStartTime);
+  const secondEnd = toMinutes(second.scheduledEndTime);
+
+  if (firstStart === null || firstEnd === null || secondStart === null || secondEnd === null) {
+    return true;
+  }
+
+  return firstStart < secondEnd && secondStart < firstEnd;
+}
+
+function hasJobConflictForUser(job: JobRecord, allJobs: JobRecord[], day: string, userId: string) {
+  return allJobs.some((candidate) => (
+    candidate.id !== job.id &&
+    getAssignedUsersForDay(candidate, day).includes(userId) &&
+    jobsOverlapByTime(job, candidate)
+  ));
+}
+
+function hasJobConflict(job: JobRecord, allJobs: JobRecord[], day: string, userId?: string) {
+  const users = userId ? [userId] : getAssignedUsersForDay(job, day);
+  return users.some((currentUserId) => hasJobConflictForUser(job, allJobs, day, currentUserId));
 }
 
 function useJobsAndUsers() {
@@ -546,6 +595,8 @@ export function JobsPage() {
     customerJobNumber: string;
     siteAddress: string;
     status: string;
+    scheduledStartTime: string;
+    scheduledEndTime: string;
     scheduledDays: string[];
     dailyAssignments: Record<string, string[]>;
   }>({
@@ -554,6 +605,8 @@ export function JobsPage() {
     customerJobNumber: "",
     siteAddress: "",
     status: JOB_STATUS_VALUES[1],
+    scheduledStartTime: "08:00",
+    scheduledEndTime: "17:00",
     scheduledDays: [],
     dailyAssignments: {}
   });
@@ -662,6 +715,8 @@ export function JobsPage() {
       customerJobNumber: "",
       siteAddress: "",
       status: JOB_STATUS_VALUES[1],
+      scheduledStartTime: "08:00",
+      scheduledEndTime: "17:00",
       scheduledDays: [],
       dailyAssignments: {}
     });
@@ -683,6 +738,8 @@ export function JobsPage() {
       customerJobNumber: job.customerJobNumber,
       siteAddress: job.siteAddress,
       status: job.status,
+      scheduledStartTime: job.scheduledStartTime ?? "08:00",
+      scheduledEndTime: job.scheduledEndTime ?? "17:00",
       scheduledDays,
       dailyAssignments: Object.fromEntries(
         scheduledDays.map((day) => [day, getAssignedUsersForDay(job, day)])
@@ -716,6 +773,8 @@ export function JobsPage() {
       ...form,
       scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
       scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
+      scheduledStartTime: form.scheduledStartTime || undefined,
+      scheduledEndTime: form.scheduledEndTime || undefined,
       dailyAssignments: Object.fromEntries(
         form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
       )
@@ -733,7 +792,25 @@ export function JobsPage() {
     (form.dailyAssignments[day] ?? []).flatMap((userId) => {
       const conflicts = jobs.filter((job) =>
         job.id !== editingJobId &&
-        getAssignedUsersForDay(job, day).includes(userId)
+        getAssignedUsersForDay(job, day).includes(userId) &&
+        jobsOverlapByTime(
+          {
+            id: editingJobId ?? "new-job",
+            title: form.title,
+            companyJobNumber: form.companyJobNumber,
+            customerJobNumber: form.customerJobNumber,
+            siteAddress: form.siteAddress,
+            status: form.status,
+            scheduledFor: null,
+            scheduledTo: null,
+            scheduledStartTime: form.scheduledStartTime || null,
+            scheduledEndTime: form.scheduledEndTime || null,
+            scheduledDays: form.scheduledDays,
+            dailyAssignmentsJson: JSON.stringify(form.dailyAssignments),
+            assignedOperativeIds: []
+          },
+          job
+        )
       );
 
       return conflicts.map((job) => ({
@@ -758,6 +835,10 @@ export function JobsPage() {
               <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
               <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
               <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <TextField label="Working start time" onChange={(value) => setForm((current) => ({ ...current, scheduledStartTime: value }))} type="time" value={form.scheduledStartTime} />
+                <TextField label="Working finish time" onChange={(value) => setForm((current) => ({ ...current, scheduledEndTime: value }))} type="time" value={form.scheduledEndTime} />
+              </div>
               <div className="field">
                 <span>Schedule range</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
@@ -807,7 +888,7 @@ export function JobsPage() {
                     {assignmentWarnings.map((warning) => (
                       <div key={`${warning.day}-${warning.userId}-${warning.companyJobNumber}`}>
                         {warning.userName} already has {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
-                        You can still save this job, or remove them from that day below if they need relocating.
+                        The time window overlaps. You can still save this job, or remove them from that day below if they need relocating.
                       </div>
                     ))}
                   </div>
@@ -852,6 +933,9 @@ export function JobsPage() {
                     {job.companyJobNumber} / {job.customerJobNumber} - {job.status}
                   </div>
                   <div className="muted">{job.siteAddress}</div>
+                  <div className="muted">
+                    Working hours: {job.scheduledStartTime && job.scheduledEndTime ? `${job.scheduledStartTime} - ${job.scheduledEndTime}` : "Not set"}
+                  </div>
                   <div className="muted">
                     Scheduled: {(job.scheduledDays ?? []).length > 0
                       ? job.scheduledDays.map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")
@@ -1078,10 +1162,13 @@ function CalendarWorkspace({
                               key={job.id}
                               className="schedule-job-chip"
                               href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}
-                              style={getJobChipStyle(job.status)}
+                              style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey, user.id))}
                             >
                               <div className="schedule-job-chip-code">{job.companyJobNumber}</div>
                               <div className="schedule-job-chip-title">{job.title}</div>
+                              <div className="schedule-job-chip-title">
+                                {job.scheduledStartTime && job.scheduledEndTime ? `${job.scheduledStartTime}-${job.scheduledEndTime}` : "Time TBC"}
+                              </div>
                             </Link>
                           ))}
                         </div>
@@ -1126,8 +1213,8 @@ function CalendarWorkspace({
                             <Link
                               className="jobs-board-chip"
                               href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}
-                              style={getJobChipStyle(job.status)}
-                              title={`${job.companyJobNumber} - ${job.title}`}
+                              style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey))}
+                              title={`${job.companyJobNumber} - ${job.title}${job.scheduledStartTime && job.scheduledEndTime ? ` (${job.scheduledStartTime}-${job.scheduledEndTime})` : ""}`}
                             >
                               {job.companyJobNumber}
                             </Link>

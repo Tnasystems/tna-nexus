@@ -1,6 +1,6 @@
 import { ApiProperty, PartialType } from "@nestjs/swagger";
 import { JOB_STATUS_VALUES } from "@tna-nexus/shared";
-import { IsArray, IsDateString, IsIn, IsObject, IsOptional, IsString } from "class-validator";
+import { IsArray, IsDateString, IsIn, IsObject, IsOptional, IsString, Matches } from "class-validator";
 
 export class CreateJobDto {
   @ApiProperty()
@@ -32,6 +32,18 @@ export class CreateJobDto {
   @IsOptional()
   @IsDateString()
   scheduledTo?: string;
+
+  @ApiProperty({ required: false, example: "08:00" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  scheduledStartTime?: string;
+
+  @ApiProperty({ required: false, example: "17:00" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  scheduledEndTime?: string;
 
   @ApiProperty({ type: [String], required: false })
   @IsOptional()

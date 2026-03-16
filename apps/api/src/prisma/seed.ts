@@ -84,6 +84,8 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime()),
         scheduledTo: new Date(startOfDay.getTime() + 8 * 60 * 60 * 1000),
+        scheduledStartTime: "08:00",
+        scheduledEndTime: "12:00",
         scheduledDays: [toDateKey(new Date(startOfDay.getTime()))],
         dailyAssignmentsJson: JSON.stringify({
           [toDateKey(new Date(startOfDay.getTime()))]: [team[2].id]
@@ -99,6 +101,8 @@ async function main() {
         status: "IN_PROGRESS",
         scheduledFor: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (2 * 24 + 8) * 60 * 60 * 1000),
+        scheduledStartTime: "09:00",
+        scheduledEndTime: "16:00",
         scheduledDays: [
           toDateKey(new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)),
           toDateKey(new Date(startOfDay.getTime() + 2 * 24 * 60 * 60 * 1000))
@@ -118,6 +122,8 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (5 * 24 + 8) * 60 * 60 * 1000),
+        scheduledStartTime: "07:30",
+        scheduledEndTime: "14:30",
         scheduledDays: [
           toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000)),
           toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))
@@ -137,6 +143,8 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (7 * 24 + 6) * 60 * 60 * 1000),
+        scheduledStartTime: "13:00",
+        scheduledEndTime: "17:00",
         scheduledDays: [toDateKey(new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000))],
         dailyAssignmentsJson: JSON.stringify({
           [toDateKey(new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000))]: [team[4].id]
@@ -152,6 +160,8 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (11 * 24 + 8) * 60 * 60 * 1000),
+        scheduledStartTime: "10:00",
+        scheduledEndTime: "18:00",
         scheduledDays: [
           toDateKey(new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000)),
           toDateKey(new Date(startOfDay.getTime() + 11 * 24 * 60 * 60 * 1000))

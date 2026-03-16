@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS "Job" (
   "status" TEXT NOT NULL,
   "scheduledFor" TIMESTAMP,
   "scheduledTo" TIMESTAMP,
+  "scheduledStartTime" TEXT,
+  "scheduledEndTime" TEXT,
   "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "dailyAssignmentsJson" TEXT NOT NULL DEFAULT '{}',
   "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -28,6 +30,8 @@ CREATE TABLE IF NOT EXISTS "Job" (
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "companyJobNumber" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "customerJobNumber" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledTo" TIMESTAMP;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledStartTime" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledEndTime" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "dailyAssignmentsJson" TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

@@ -12,9 +12,9 @@ export const jobs = [
 ];
 
 export const staff = [
-  { name: "Amy Reeves", role: "Supervisor", state: "On site" },
-  { name: "Sanjay Patel", role: "Field Tech", state: "Travelling" },
-  { name: "Chris Moore", role: "Field Tech", state: "Clocked out" }
+  { name: "Amy Reeves", role: "Manager", state: "On site" },
+  { name: "Sanjay Patel", role: "Operative", state: "Travelling" },
+  { name: "Chris Moore", role: "Operative", state: "Clocked out" }
 ];
 
 export const forms = [

@@ -24,6 +24,7 @@ export class JobsService {
         siteAddress: dto.siteAddress,
         status: dto.status,
         scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : null,
+        scheduledTo: dto.scheduledTo ? new Date(dto.scheduledTo) : null,
         assignedOperativeIds: dto.assignedOperativeIds ?? []
       }
     });
@@ -46,6 +47,7 @@ export class JobsService {
         siteAddress: dto.siteAddress ?? undefined,
         status: dto.status ?? undefined,
         scheduledFor: dto.scheduledFor === undefined ? undefined : dto.scheduledFor ? new Date(dto.scheduledFor) : null,
+        scheduledTo: dto.scheduledTo === undefined ? undefined : dto.scheduledTo ? new Date(dto.scheduledTo) : null,
         assignedOperativeIds: dto.assignedOperativeIds ?? undefined
       }
     });

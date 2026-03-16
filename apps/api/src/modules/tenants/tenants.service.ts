@@ -45,7 +45,7 @@ export class TenantsService {
           id: randomUUID(),
           email: dto.ownerEmail,
           fullName: `${dto.companyName} Owner`,
-          role: "COMPANY_OWNER",
+          role: "DIRECTOR",
           passwordHash: await argon2.hash(dto.ownerPassword)
         }
       });

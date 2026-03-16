@@ -2,13 +2,9 @@ export const API_VERSION = "v1";
 
 export const ROLE_VALUES = [
   "PLATFORM_ADMIN",
-  "COMPANY_OWNER",
-  "COMPANY_ADMIN",
-  "DISPATCHER",
-  "SUPERVISOR",
-  "FIELD_TECH",
-  "AUDITOR",
-  "VIEWER"
+  "DIRECTOR",
+  "MANAGER",
+  "OPERATIVE"
 ] as const;
 
 export const JOB_STATUS_VALUES = [

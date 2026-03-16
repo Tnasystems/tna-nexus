@@ -28,6 +28,11 @@ export class CreateJobDto {
   @IsDateString()
   scheduledFor?: string;
 
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsDateString()
+  scheduledTo?: string;
+
   @ApiProperty({ type: [String], required: false })
   @IsOptional()
   @IsArray()

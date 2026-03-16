@@ -62,7 +62,7 @@ async function main() {
         id: ownerId,
         email: "owner@demo-industrial.local",
         fullName: "Demo Company Owner",
-        role: "COMPANY_OWNER",
+        role: "DIRECTOR",
         passwordHash: await argon2.hash("ChangeMe123!")
       }
     });

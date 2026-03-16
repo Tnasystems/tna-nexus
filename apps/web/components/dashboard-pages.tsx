@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProtectedWorkspace } from "./protected-workspace";
 import { apiRequest } from "../lib/api";
-import { buildSession, persistSession, type AuthTokenResponse } from "../lib/auth";
+import { buildSession, persistSession, type AppSession, type AuthTokenResponse } from "../lib/auth";
 import { JOB_STATUS_VALUES, ROLE_VALUES } from "@tna-nexus/shared";
 
 function PanelGrid({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -95,8 +95,11 @@ interface JobRecord {
   siteAddress: string;
   status: string;
   scheduledFor: string | null;
+  scheduledTo: string | null;
   assignedOperativeIds: string[];
 }
+
+const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
 
 function useJobsAndUsers() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
@@ -477,6 +480,7 @@ export function JobsPage() {
     siteAddress: string;
     status: string;
     scheduledFor: string;
+    scheduledTo: string;
     assignedOperativeIds: string[];
   }>({
     title: "",
@@ -485,6 +489,7 @@ export function JobsPage() {
     siteAddress: "",
     status: JOB_STATUS_VALUES[1],
     scheduledFor: "",
+    scheduledTo: "",
     assignedOperativeIds: [] as string[]
   });
   const usersById = new Map(users.map((user) => [user.id, user]));
@@ -506,6 +511,7 @@ export function JobsPage() {
       siteAddress: "",
       status: JOB_STATUS_VALUES[1],
       scheduledFor: "",
+      scheduledTo: "",
       assignedOperativeIds: []
     });
     setEditingJobId(null);
@@ -520,6 +526,7 @@ export function JobsPage() {
       siteAddress: job.siteAddress,
       status: job.status,
       scheduledFor: job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 16) : "",
+      scheduledTo: job.scheduledTo ? new Date(job.scheduledTo).toISOString().slice(0, 16) : "",
       assignedOperativeIds: job.assignedOperativeIds ?? []
     });
   }
@@ -565,7 +572,8 @@ export function JobsPage() {
               <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
               <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
               <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
-              <TextField label="Scheduled for" onChange={(value) => setForm((current) => ({ ...current, scheduledFor: value }))} type="datetime-local" value={form.scheduledFor} />
+              <TextField label="Start date/time" onChange={(value) => setForm((current) => ({ ...current, scheduledFor: value }))} type="datetime-local" value={form.scheduledFor} />
+              <TextField label="End date/time" onChange={(value) => setForm((current) => ({ ...current, scheduledTo: value }))} type="datetime-local" value={form.scheduledTo} />
               <div className="field">
                 <span>Assign operatives</span>
                 <div className="stack" style={{ gap: 10 }}>
@@ -605,6 +613,7 @@ export function JobsPage() {
                   <div className="muted">{job.siteAddress}</div>
                   <div className="muted">
                     Scheduled: {job.scheduledFor ? new Date(job.scheduledFor).toLocaleString() : "Not scheduled"}
+                    {job.scheduledTo ? ` to ${new Date(job.scheduledTo).toLocaleString()}` : ""}
                   </div>
                   <div className="muted">
                     Assigned: {job.assignedOperativeIds.length > 0
@@ -628,45 +637,121 @@ export function CalendarPage() {
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
   });
 
+  return (
+    <ProtectedWorkspace allow="tenant" description="Monthly assignment view by employee and scheduled job date." title="Calendar">
+      {(session) => (
+        <CalendarWorkspace
+          calendarMonth={calendarMonth}
+          error={error}
+          jobs={jobs}
+          session={session}
+          setCalendarMonth={setCalendarMonth}
+          users={users}
+        />
+      )}
+    </ProtectedWorkspace>
+  );
+}
+
+function CalendarWorkspace({
+  session,
+  jobs,
+  users,
+  error,
+  calendarMonth,
+  setCalendarMonth
+}: Readonly<{
+  session: AppSession;
+  jobs: JobRecord[];
+  users: UserRecord[];
+  error: string | null;
+  calendarMonth: string;
+  setCalendarMonth: (value: string) => void;
+}>) {
+  const isManager = MANAGER_ROLES.has(session.user.role);
+  const defaultEmployee = !isManager ? session.user.sub : "all";
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(defaultEmployee);
+
   const [year, month] = calendarMonth.split("-").map((part) => Number(part));
   const firstDayOfMonth = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
   const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
   const leadingEmptyDays = (firstDayOfMonth.getDay() + 6) % 7;
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
   const jobsForMonth = jobs.filter((job) => {
     if (!job.scheduledFor) {
       return false;
     }
 
-    const scheduled = new Date(job.scheduledFor);
-    return scheduled.getFullYear() === year && scheduled.getMonth() + 1 === month;
+    const start = new Date(job.scheduledFor);
+    const end = job.scheduledTo ? new Date(job.scheduledTo) : start;
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    return start <= lastDayOfMonth && end >= firstDayOfMonth;
   });
+
+  useEffect(() => {
+    if (!isManager) {
+      setSelectedEmployeeId(session.user.sub);
+    }
+  }, [isManager, session.user.sub]);
+
+  function jobMatchesSelectedEmployee(job: JobRecord) {
+    if (selectedEmployeeId === "all") {
+      return true;
+    }
+
+    return (job.assignedOperativeIds ?? []).includes(selectedEmployeeId);
+  }
 
   function jobsForDay(day: number) {
     return jobsForMonth.filter((job) => {
-      if (!job.scheduledFor) {
+      if (!job.scheduledFor || !jobMatchesSelectedEmployee(job)) {
         return false;
       }
 
-      return new Date(job.scheduledFor).getDate() === day;
+      const start = new Date(job.scheduledFor);
+      const end = job.scheduledTo ? new Date(job.scheduledTo) : start;
+      const currentDay = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
+      return currentDay >= start && currentDay <= end;
     });
   }
 
   return (
-    <ProtectedWorkspace allow="tenant" description="Monthly assignment view by employee and scheduled job date." title="Calendar">
-      {() => (
-        <article className="panel" style={{ padding: 24 }}>
+    <article className="panel" style={{ padding: 24 }}>
           <ErrorText error={error} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div>
               <h2 style={{ margin: 0 }}>Staff job calendar</h2>
               <div className="muted" style={{ marginTop: 8 }}>Month view with each day showing scheduled jobs and assigned employees.</div>
             </div>
-            <label className="field" style={{ minWidth: 220 }}>
-              <span>Calendar month</span>
-              <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
-            </label>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <label className="field" style={{ minWidth: 220 }}>
+                <span>Calendar month</span>
+                <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
+              </label>
+              <label className="field" style={{ minWidth: 220 }}>
+                <span>{isManager ? "Employee schedule" : "Viewing"}</span>
+                <select
+                  className="input"
+                  disabled={!isManager}
+                  onChange={(event) => setSelectedEmployeeId(event.target.value)}
+                  value={selectedEmployeeId}
+                >
+                  {isManager ? <option value="all">All employees</option> : null}
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>{user.fullName}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
           <div className="calendar-month" style={{ marginTop: 20 }}>
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
@@ -687,6 +772,10 @@ export function CalendarPage() {
                         <div className="calendar-entry-title">{job.companyJobNumber}</div>
                         <div className="calendar-entry-subtitle">{job.title}</div>
                         <div className="calendar-entry-subtitle">
+                          {job.scheduledFor ? new Date(job.scheduledFor).toLocaleDateString() : ""}
+                          {job.scheduledTo ? ` - ${new Date(job.scheduledTo).toLocaleDateString()}` : ""}
+                        </div>
+                        <div className="calendar-entry-subtitle">
                           {(job.assignedOperativeIds ?? []).length > 0
                             ? job.assignedOperativeIds.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
                             : "Unassigned"}
@@ -699,8 +788,6 @@ export function CalendarPage() {
             })}
           </div>
         </article>
-      )}
-    </ProtectedWorkspace>
   );
 }
 

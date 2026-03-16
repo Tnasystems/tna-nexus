@@ -256,6 +256,25 @@ main {
   color: var(--muted);
 }
 
+.assignment-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.assignment-pill-remove {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;

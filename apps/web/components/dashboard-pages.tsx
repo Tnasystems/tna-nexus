@@ -492,14 +492,28 @@ export function JobsPage() {
     scheduledTo: "",
     assignedOperativeIds: [] as string[]
   });
+  const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const operativeOptions = users.filter((user) => user.role === "OPERATIVE" || MANAGER_ROLES.has(user.role));
 
-  function toggleOperative(userId: string) {
+  function addOperative() {
+    if (!selectedOperativeId) {
+      return;
+    }
+
     setForm((current) => ({
       ...current,
-      assignedOperativeIds: current.assignedOperativeIds.includes(userId)
-        ? current.assignedOperativeIds.filter((id) => id !== userId)
-        : [...current.assignedOperativeIds, userId]
+      assignedOperativeIds: current.assignedOperativeIds.includes(selectedOperativeId)
+        ? current.assignedOperativeIds
+        : [...current.assignedOperativeIds, selectedOperativeId]
+    }));
+    setSelectedOperativeId("");
+  }
+
+  function removeOperative(userId: string) {
+    setForm((current) => ({
+      ...current,
+      assignedOperativeIds: current.assignedOperativeIds.filter((id) => id !== userId)
     }));
   }
 
@@ -514,6 +528,7 @@ export function JobsPage() {
       scheduledTo: "",
       assignedOperativeIds: []
     });
+    setSelectedOperativeId("");
     setEditingJobId(null);
   }
 
@@ -576,16 +591,25 @@ export function JobsPage() {
               <TextField label="End date/time" onChange={(value) => setForm((current) => ({ ...current, scheduledTo: value }))} type="datetime-local" value={form.scheduledTo} />
               <div className="field">
                 <span>Assign operatives</span>
-                <div className="stack" style={{ gap: 10 }}>
-                  {users.map((user) => (
-                    <label key={String(user.id)} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <input
-                        checked={form.assignedOperativeIds.includes(String(user.id))}
-                        onChange={() => toggleOperative(String(user.id))}
-                        type="checkbox"
-                      />
-                      <span>{String(user.fullName)} ({String(user.role)})</span>
-                    </label>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                  <label className="field" style={{ flex: "1 1 260px" }}>
+                    <span>Select team member</span>
+                    <select className="input" onChange={(event) => setSelectedOperativeId(event.target.value)} value={selectedOperativeId}>
+                      <option value="">Choose a team member</option>
+                      {operativeOptions.map((user) => (
+                        <option key={user.id} value={user.id}>{user.fullName} ({user.role})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="button button-subtle" onClick={addOperative} type="button">Add to Job</button>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {form.assignedOperativeIds.length === 0 ? <div className="muted">No team members assigned.</div> : null}
+                  {form.assignedOperativeIds.map((userId) => (
+                    <div key={userId} className="assignment-pill">
+                      <span>{usersById.get(userId)?.fullName ?? userId}</span>
+                      <button className="assignment-pill-remove" onClick={() => removeOperative(userId)} type="button">Remove</button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -792,8 +816,9 @@ function CalendarWorkspace({
 }
 
 export function UsersPage() {
-  const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [form, setForm] = useState<{
     email: string;
     fullName: string;
@@ -808,7 +833,7 @@ export function UsersPage() {
 
   async function load() {
     try {
-      setUsers(await apiRequest<Array<Record<string, unknown>>>("users"));
+      setUsers(await apiRequest<UserRecord[]>("users"));
       setError(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Failed to load users.");
@@ -817,15 +842,40 @@ export function UsersPage() {
 
   useEffect(() => { void load(); }, []);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await apiRequest("users", { method: "POST", body: JSON.stringify(form) });
+  function resetForm() {
     setForm({
       email: "",
       fullName: "",
       role: ROLE_VALUES[1],
       password: ""
     });
+    setEditingUserId(null);
+  }
+
+  function startEdit(user: UserRecord) {
+    setEditingUserId(user.id);
+    setForm({
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      password: ""
+    });
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (editingUserId) {
+      const payload = {
+        email: form.email,
+        fullName: form.fullName,
+        role: form.role,
+        ...(form.password ? { password: form.password } : {})
+      };
+      await apiRequest(`users/${editingUserId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await apiRequest("users", { method: "POST", body: JSON.stringify(form) });
+    }
+    resetForm();
     await load();
   }
 
@@ -834,13 +884,23 @@ export function UsersPage() {
       {() => (
         <PanelGrid>
           <article className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0 }}>Create user</h2>
+            <h2 style={{ marginTop: 0 }}>{editingUserId ? "Edit user" : "Create user"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
               <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
               <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
               <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
-              <TextField label="Password" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />
-              <button className="button" type="submit">Create User</button>
+              <TextField
+                label={editingUserId ? "New password (optional)" : "Password"}
+                onChange={(value) => setForm((current) => ({ ...current, password: value }))}
+                type="password"
+                value={form.password}
+              />
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button className="button" type="submit">{editingUserId ? "Save Changes" : "Create User"}</button>
+                {editingUserId ? (
+                  <button className="button button-subtle" onClick={resetForm} type="button">Cancel Edit</button>
+                ) : null}
+              </div>
             </form>
             <ErrorText error={error} />
           </article>
@@ -848,10 +908,19 @@ export function UsersPage() {
             <h2 style={{ marginTop: 0 }}>Current users</h2>
             <div className="stack">
               {users.map((user) => (
-                <div key={String(user.id)} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
-                  <div style={{ fontWeight: 700 }}>{String(user.fullName)}</div>
-                  <div className="muted">{String(user.email)} - {String(user.role)}</div>
-                </div>
+                <button
+                  key={user.id}
+                  className="button button-subtle"
+                  onClick={() => startEdit(user)}
+                  style={{ justifyContent: "space-between", width: "100%", borderRadius: 18, padding: 16 }}
+                  type="button"
+                >
+                  <span style={{ display: "grid", gap: 6, textAlign: "left" }}>
+                    <span style={{ fontWeight: 700 }}>{user.fullName}</span>
+                    <span className="muted">{user.email} - {user.role}</span>
+                  </span>
+                  <span>Edit</span>
+                </button>
               ))}
             </div>
           </article>

@@ -130,7 +130,7 @@ async function main() {
         scheduledTo: new Date(startOfDay.getTime() + (11 * 24 + 8) * 60 * 60 * 1000),
         assignedOperativeIds: [team[2].id, team[4].id]
       }
-    ] as const;
+    ];
 
     await tenantPrisma.job.createMany({ data: jobs });
 

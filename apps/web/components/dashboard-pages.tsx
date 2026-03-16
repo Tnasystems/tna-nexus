@@ -96,6 +96,7 @@ interface JobRecord {
   status: string;
   scheduledFor: string | null;
   scheduledTo: string | null;
+  scheduledDays: string[];
   assignedOperativeIds: string[];
 }
 
@@ -479,8 +480,7 @@ export function JobsPage() {
     customerJobNumber: string;
     siteAddress: string;
     status: string;
-    scheduledFor: string;
-    scheduledTo: string;
+    scheduledDays: string[];
     assignedOperativeIds: string[];
   }>({
     title: "",
@@ -488,13 +488,34 @@ export function JobsPage() {
     customerJobNumber: "",
     siteAddress: "",
     status: JOB_STATUS_VALUES[1],
-    scheduledFor: "",
-    scheduledTo: "",
+    scheduledDays: [],
     assignedOperativeIds: [] as string[]
   });
+  const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const usersById = new Map(users.map((user) => [user.id, user]));
-  const operativeOptions = users.filter((user) => user.role === "OPERATIVE" || MANAGER_ROLES.has(user.role));
+  const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
+
+  function addScheduledDay() {
+    if (!selectedDay) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      scheduledDays: current.scheduledDays.includes(selectedDay)
+        ? current.scheduledDays
+        : [...current.scheduledDays, selectedDay].sort()
+    }));
+    setSelectedDay("");
+  }
+
+  function removeScheduledDay(day: string) {
+    setForm((current) => ({
+      ...current,
+      scheduledDays: current.scheduledDays.filter((entry) => entry !== day)
+    }));
+  }
 
   function addOperative() {
     if (!selectedOperativeId) {
@@ -524,10 +545,10 @@ export function JobsPage() {
       customerJobNumber: "",
       siteAddress: "",
       status: JOB_STATUS_VALUES[1],
-      scheduledFor: "",
-      scheduledTo: "",
+      scheduledDays: [],
       assignedOperativeIds: []
     });
+    setSelectedDay("");
     setSelectedOperativeId("");
     setEditingJobId(null);
   }
@@ -540,8 +561,9 @@ export function JobsPage() {
       customerJobNumber: job.customerJobNumber,
       siteAddress: job.siteAddress,
       status: job.status,
-      scheduledFor: job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 16) : "",
-      scheduledTo: job.scheduledTo ? new Date(job.scheduledTo).toISOString().slice(0, 16) : "",
+      scheduledDays: (job.scheduledDays ?? []).length > 0
+        ? [...job.scheduledDays].sort()
+        : [job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean),
       assignedOperativeIds: job.assignedOperativeIds ?? []
     });
   }
@@ -587,8 +609,25 @@ export function JobsPage() {
               <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
               <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
               <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
-              <TextField label="Start date/time" onChange={(value) => setForm((current) => ({ ...current, scheduledFor: value }))} type="datetime-local" value={form.scheduledFor} />
-              <TextField label="End date/time" onChange={(value) => setForm((current) => ({ ...current, scheduledTo: value }))} type="datetime-local" value={form.scheduledTo} />
+              <div className="field">
+                <span>Scheduled days</span>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                  <label className="field" style={{ flex: "1 1 220px" }}>
+                    <span>Select day</span>
+                    <input className="input" onChange={(event) => setSelectedDay(event.target.value)} type="date" value={selectedDay} />
+                  </label>
+                  <button className="button button-subtle" onClick={addScheduledDay} type="button">Add Day</button>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {form.scheduledDays.length === 0 ? <div className="muted">No days selected.</div> : null}
+                  {form.scheduledDays.map((day) => (
+                    <div key={day} className="assignment-pill">
+                      <span>{new Date(`${day}T00:00:00`).toLocaleDateString()}</span>
+                      <button className="assignment-pill-remove" onClick={() => removeScheduledDay(day)} type="button">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="field">
                 <span>Assign operatives</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
@@ -636,8 +675,9 @@ export function JobsPage() {
                   </div>
                   <div className="muted">{job.siteAddress}</div>
                   <div className="muted">
-                    Scheduled: {job.scheduledFor ? new Date(job.scheduledFor).toLocaleString() : "Not scheduled"}
-                    {job.scheduledTo ? ` to ${new Date(job.scheduledTo).toLocaleString()}` : ""}
+                    Scheduled: {(job.scheduledDays ?? []).length > 0
+                      ? job.scheduledDays.map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")
+                      : "Not scheduled"}
                   </div>
                   <div className="muted">
                     Assigned: {job.assignedOperativeIds.length > 0
@@ -704,17 +744,20 @@ function CalendarWorkspace({
   const usersById = new Map(users.map((user) => [user.id, user]));
   const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
   const jobsForMonth = jobs.filter((job) => {
-    if (!job.scheduledFor) {
+    const scheduledDays = job.scheduledDays ?? [];
+    if (scheduledDays.length === 0 && !job.scheduledFor) {
       return false;
     }
+    if (scheduledDays.length > 0) {
+      return scheduledDays.some((day) => {
+        const current = new Date(`${day}T00:00:00`);
+        return current >= firstDayOfMonth && current <= lastDayOfMonth;
+      });
+    }
 
-    const start = new Date(job.scheduledFor);
-    const end = job.scheduledTo ? new Date(job.scheduledTo) : start;
-
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    return start <= lastDayOfMonth && end >= firstDayOfMonth;
+    const singleDay = new Date(job.scheduledFor as string);
+    singleDay.setHours(0, 0, 0, 0);
+    return singleDay >= firstDayOfMonth && singleDay <= lastDayOfMonth;
   });
 
   useEffect(() => {
@@ -733,18 +776,19 @@ function CalendarWorkspace({
 
   function jobsForDay(day: number) {
     return jobsForMonth.filter((job) => {
-      if (!job.scheduledFor || !jobMatchesSelectedEmployee(job)) {
+      if (!jobMatchesSelectedEmployee(job)) {
+        return false;
+      }
+      const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      if ((job.scheduledDays ?? []).length > 0) {
+        return job.scheduledDays.includes(dayKey);
+      }
+
+      if (!job.scheduledFor) {
         return false;
       }
 
-      const start = new Date(job.scheduledFor);
-      const end = job.scheduledTo ? new Date(job.scheduledTo) : start;
-      const currentDay = new Date(year, month - 1, day, 12, 0, 0, 0);
-
-      start.setHours(0, 0, 0, 0);
-      end.setHours(23, 59, 59, 999);
-
-      return currentDay >= start && currentDay <= end;
+      return new Date(job.scheduledFor).getDate() === day;
     });
   }
 
@@ -796,8 +840,9 @@ function CalendarWorkspace({
                         <div className="calendar-entry-title">{job.companyJobNumber}</div>
                         <div className="calendar-entry-subtitle">{job.title}</div>
                         <div className="calendar-entry-subtitle">
-                          {job.scheduledFor ? new Date(job.scheduledFor).toLocaleDateString() : ""}
-                          {job.scheduledTo ? ` - ${new Date(job.scheduledTo).toLocaleDateString()}` : ""}
+                          {(job.scheduledDays ?? []).length > 0
+                            ? job.scheduledDays.map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")
+                            : (job.scheduledFor ? new Date(job.scheduledFor).toLocaleDateString() : "")}
                         </div>
                         <div className="calendar-entry-subtitle">
                           {(job.assignedOperativeIds ?? []).length > 0

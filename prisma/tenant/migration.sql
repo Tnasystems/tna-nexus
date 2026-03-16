@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS "Job" (
   "status" TEXT NOT NULL,
   "scheduledFor" TIMESTAMP,
   "scheduledTo" TIMESTAMP,
+  "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS "Job" (
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "companyJobNumber" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "customerJobNumber" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledTo" TIMESTAMP;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 UPDATE "Job" SET "companyJobNumber" = COALESCE("companyJobNumber", "id") WHERE "companyJobNumber" IS NULL;
 UPDATE "Job" SET "customerJobNumber" = COALESCE("customerJobNumber", "id") WHERE "customerJobNumber" IS NULL;

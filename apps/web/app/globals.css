@@ -169,11 +169,17 @@ main {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   padding: 14px 16px;
   outline: none;
   font: inherit;
+}
+
+select.input,
+option {
+  color: var(--text);
+  background: var(--panel-strong);
 }
 
 .input::placeholder {

@@ -84,6 +84,7 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime()),
         scheduledTo: new Date(startOfDay.getTime() + 8 * 60 * 60 * 1000),
+        scheduledDays: [toDateKey(new Date(startOfDay.getTime()))],
         assignedOperativeIds: [team[2].id]
       },
       {
@@ -95,6 +96,10 @@ async function main() {
         status: "IN_PROGRESS",
         scheduledFor: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (2 * 24 + 8) * 60 * 60 * 1000),
+        scheduledDays: [
+          toDateKey(new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)),
+          toDateKey(new Date(startOfDay.getTime() + 2 * 24 * 60 * 60 * 1000))
+        ],
         assignedOperativeIds: [team[3].id, team[4].id]
       },
       {
@@ -106,6 +111,10 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (5 * 24 + 8) * 60 * 60 * 1000),
+        scheduledDays: [
+          toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000)),
+          toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))
+        ],
         assignedOperativeIds: [team[2].id, team[3].id]
       },
       {
@@ -117,6 +126,7 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (7 * 24 + 6) * 60 * 60 * 1000),
+        scheduledDays: [toDateKey(new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000))],
         assignedOperativeIds: [team[4].id]
       },
       {
@@ -128,6 +138,10 @@ async function main() {
         status: "SCHEDULED",
         scheduledFor: new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000),
         scheduledTo: new Date(startOfDay.getTime() + (11 * 24 + 8) * 60 * 60 * 1000),
+        scheduledDays: [
+          toDateKey(new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000)),
+          toDateKey(new Date(startOfDay.getTime() + 11 * 24 * 60 * 60 * 1000))
+        ],
         assignedOperativeIds: [team[2].id, team[4].id]
       }
     ];
@@ -215,3 +229,7 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+function toDateKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}

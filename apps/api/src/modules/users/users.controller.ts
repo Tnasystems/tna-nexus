@@ -18,6 +18,11 @@ export class UsersController {
     return this.service.list(user);
   }
 
+  @Get(":userId")
+  get(@CurrentUser() user: JwtUser, @Param("userId") userId: string) {
+    return this.service.get(user, userId);
+  }
+
   @Post()
   create(@CurrentUser() user: JwtUser, @Body() body: CreateUserDto) {
     return this.service.create(user, body);

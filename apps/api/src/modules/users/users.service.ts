@@ -14,6 +14,17 @@ export class UsersService {
     return prisma.user.findMany({ orderBy: { createdAt: "desc" } });
   }
 
+  async get(user: JwtUser, userId: string) {
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const existing = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!existing) {
+      throw new NotFoundException("User not found.");
+    }
+
+    return existing;
+  }
+
   async create(user: JwtUser, dto: CreateUserDto) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     return prisma.user.create({

@@ -147,6 +147,10 @@ function jobDetailHref(jobId: string, tab: "details" | "schedule" = "details") {
   return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
 
+function userDetailHref(userId: string, tab: "schedule" | "information" | "training" | "settings" = "information") {
+  return `/dashboard/users/${encodeURIComponent(userId)}?tab=${tab}`;
+}
+
 function startOfWeek(day: Date) {
   const next = new Date(day);
   const offset = (next.getDay() + 6) % 7;
@@ -1725,23 +1729,383 @@ export function UsersPage() {
             <h2 style={{ marginTop: 0 }}>Current users</h2>
             <div className="stack">
               {users.map((user) => (
-                <button
+                <Link
                   key={user.id}
                   className="button button-subtle"
-                  onClick={() => startEdit(user)}
+                  href={userDetailHref(user.id)}
                   style={{ justifyContent: "space-between", width: "100%", borderRadius: 18, padding: 16 }}
-                  type="button"
                 >
                   <span style={{ display: "grid", gap: 6, textAlign: "left" }}>
                     <span style={{ fontWeight: 700 }}>{user.fullName}</span>
                     <span className="muted">{user.email} - {user.role}</span>
                   </span>
-                  <span>Edit</span>
-                </button>
+                  <span>Open</span>
+                </Link>
               ))}
             </div>
           </article>
         </PanelGrid>
+      )}
+    </ProtectedWorkspace>
+  );
+}
+
+export function UserRecordPage({
+  initialTab = "information",
+  userId
+}: Readonly<{
+  initialTab?: "schedule" | "information" | "training" | "settings";
+  userId: string;
+}>) {
+  const [user, setUser] = useState<UserRecord | null>(null);
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"schedule" | "information" | "training" | "settings">(initialTab);
+  const [scheduleMode, setScheduleMode] = useState<"week" | "month">("week");
+  const [weekFocusDate, setWeekFocusDate] = useState(() => toDateKey(new Date()));
+  const [scheduleMonth, setScheduleMonth] = useState(() => {
+    const current = new Date();
+    return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [form, setForm] = useState<{
+    email: string;
+    fullName: string;
+    role: string;
+    password: string;
+  }>({
+    email: "",
+    fullName: "",
+    role: ROLE_VALUES[1],
+    password: ""
+  });
+
+  async function load() {
+    try {
+      const [nextUser, nextJobs] = await Promise.all([
+        apiRequest<UserRecord>(`users/${userId}`),
+        apiRequest<JobRecord[]>("jobs")
+      ]);
+      setUser(nextUser);
+      setJobs(nextJobs);
+      setForm({
+        email: nextUser.email,
+        fullName: nextUser.fullName,
+        role: nextUser.role,
+        password: ""
+      });
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to load employee.");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [userId]);
+
+  async function handleSave() {
+    setError(null);
+    setSuccess(null);
+    try {
+      const payload = {
+        email: form.email,
+        fullName: form.fullName,
+        role: form.role,
+        ...(form.password ? { password: form.password } : {})
+      };
+      await apiRequest(`users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      setSuccess("Employee updated successfully.");
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to save employee.");
+    }
+  }
+
+  const assignedJobs = jobs
+    .filter((job) => Object.values(getJobDailyAssignments(job)).some((assignedUsers) => assignedUsers.includes(userId)))
+    .sort((left, right) => (left.scheduledDays[0] ?? "").localeCompare(right.scheduledDays[0] ?? ""));
+  const weekStart = startOfWeek(new Date(`${weekFocusDate}T00:00:00`));
+  const weekDays = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + index);
+    return day;
+  });
+  const [scheduleYear, scheduleMonthNumber] = scheduleMonth.split("-").map(Number);
+  const monthDays = Array.from({ length: new Date(scheduleYear, scheduleMonthNumber, 0).getDate() }, (_, index) => index + 1);
+  const monthStart = new Date(scheduleYear, scheduleMonthNumber - 1, 1);
+  const monthEnd = new Date(scheduleYear, scheduleMonthNumber - 1, monthDays.length, 23, 59, 59, 999);
+  const assignedJobsForMonth = assignedJobs.filter((job) => (job.scheduledDays ?? []).some((day) => {
+    const current = new Date(`${day}T00:00:00`);
+    return current >= monthStart && current <= monthEnd;
+  }));
+
+  const demoCertificates = [
+    { name: "CSCS Card", status: "Valid", expires: "18/09/2027" },
+    { name: "Manual Handling", status: "Valid", expires: "04/02/2027" },
+    { name: "Working at Height", status: "Review Soon", expires: "22/05/2026" }
+  ];
+
+  const demoProfileRows = [
+    { label: "Mobile", value: user ? `07${user.id.slice(0, 2)} ${user.id.slice(2, 5)} ${user.id.slice(5, 9)}` : "-" },
+    { label: "Depot", value: user?.role === "OPERATIVE" ? "Midlands Depot" : "Head Office" },
+    { label: "Manager", value: user?.role === "OPERATIVE" ? "Marcus Cole" : "Alicia Warren" },
+    { label: "Employment", value: user?.role === "OPERATIVE" ? "Full-time field operative" : "Management" }
+  ];
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Review a team member, their schedule, training, and account settings." title={user ? user.fullName : "Team Member"}>
+      {() => (
+        <div className="stack">
+          <ErrorText error={error} />
+          {success ? <div className="panel" style={{ padding: 18, borderRadius: 18 }}>{success}</div> : null}
+          <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
+              {[
+                { key: "schedule" as const, label: "Schedule" },
+                { key: "information" as const, label: "Employee Information" },
+                { key: "training" as const, label: "Training" },
+                { key: "settings" as const, label: "Settings" }
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  className={activeTab === tab.key ? "button" : "button button-subtle"}
+                  onClick={() => setActiveTab(tab.key)}
+                  style={{ borderRadius: 0, minWidth: 170 }}
+                  type="button"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: 24 }}>
+              {activeTab === "schedule" ? (
+                <div className="stack">
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "space-between", alignItems: "end" }}>
+                    <div className="field" style={{ minWidth: 280 }}>
+                      <span>Schedule view</span>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button className={scheduleMode === "week" ? "button" : "button button-subtle"} onClick={() => setScheduleMode("week")} type="button">
+                          Week Planner
+                        </button>
+                        <button className={scheduleMode === "month" ? "button" : "button button-subtle"} onClick={() => setScheduleMode("month")} type="button">
+                          Month Jobs
+                        </button>
+                      </div>
+                    </div>
+                    {scheduleMode === "week" ? (
+                      <div className="field" style={{ minWidth: 320 }}>
+                        <span>Week of</span>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button className="button button-subtle" onClick={() => setWeekFocusDate(shiftDateKey(weekFocusDate, -7))} type="button">Previous</button>
+                          <input className="input" onChange={(event) => setWeekFocusDate(event.target.value)} type="date" value={weekFocusDate} />
+                          <button className="button button-subtle" onClick={() => setWeekFocusDate(shiftDateKey(weekFocusDate, 7))} type="button">Next</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="field" style={{ minWidth: 220 }}>
+                        <span>Calendar month</span>
+                        <input className="input" onChange={(event) => setScheduleMonth(event.target.value)} type="month" value={scheduleMonth} />
+                      </label>
+                    )}
+                  </div>
+
+                  {scheduleMode === "week" ? (
+                    <div className="schedule-board-wrap">
+                      <div className="schedule-board">
+                        <div className="schedule-board-corner">
+                          <div style={{ fontWeight: 800 }}>{user?.fullName ?? "Employee"}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {weekDays[0].toLocaleDateString()} - {weekDays[weekDays.length - 1].toLocaleDateString()}
+                          </div>
+                        </div>
+                        {weekDays.map((day) => (
+                          <div key={day.toISOString()} className={`schedule-board-header ${day.getDay() === 0 || day.getDay() === 6 ? "schedule-board-header-weekend" : ""}`}>
+                            <div>{day.toLocaleDateString(undefined, { weekday: "short" })}</div>
+                            <div>{day.getDate()}</div>
+                          </div>
+                        ))}
+                        <div className="schedule-board-user">
+                          <div className="schedule-board-user-name">{user?.fullName ?? "-"}</div>
+                          <div className="schedule-board-user-role">{user?.role ?? "-"}</div>
+                        </div>
+                        {weekDays.map((day) => {
+                          const dayKey = toDateKey(day);
+                          const dayJobs = assignedJobs.filter((job) => getAssignedUsersForDay(job, dayKey).includes(userId));
+                          return (
+                            <div key={dayKey} className={`schedule-board-cell ${day.getDay() === 0 || day.getDay() === 6 ? "schedule-board-cell-weekend" : ""}`}>
+                              {dayJobs.length === 0 ? <div className="schedule-board-empty">-</div> : null}
+                              {dayJobs.map((job) => (
+                                <Link
+                                  key={job.id}
+                                  className="schedule-job-chip"
+                                  href={jobDetailHref(job.id, "schedule")}
+                                  style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey, userId))}
+                                >
+                                  <div className="schedule-job-chip-code">{job.companyJobNumber}</div>
+                                  <div className="schedule-job-chip-title">{job.title}</div>
+                                  <div className="schedule-job-chip-title">
+                                    {job.scheduledStartTime && job.scheduledEndTime ? `${job.scheduledStartTime}-${job.scheduledEndTime}` : "Time TBC"}
+                                  </div>
+                                </Link>
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="jobs-board-wrap">
+                      <div className="jobs-board" style={{ gridTemplateColumns: `240px repeat(${monthDays.length}, minmax(28px, 1fr))` }}>
+                        <div className="jobs-board-corner">
+                          <div style={{ fontWeight: 800 }}>{user?.fullName ?? "Employee"} Jobs</div>
+                          <div className="muted" style={{ fontSize: 12 }}>{monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</div>
+                        </div>
+                        {monthDays.map((day) => {
+                          const current = new Date(scheduleYear, scheduleMonthNumber - 1, day);
+                          const weekend = current.getDay() === 0 || current.getDay() === 6;
+                          return <div key={day} className={`jobs-board-header ${weekend ? "jobs-board-header-weekend" : ""}`}>{day}</div>;
+                        })}
+                        {assignedJobsForMonth.length === 0 ? (
+                          <Fragment>
+                            <div className="jobs-board-job">
+                              <div className="jobs-board-job-code">No jobs</div>
+                              <div className="jobs-board-job-title">Nothing assigned this month</div>
+                            </div>
+                            {monthDays.map((day) => {
+                              const current = new Date(scheduleYear, scheduleMonthNumber - 1, day);
+                              const weekend = current.getDay() === 0 || current.getDay() === 6;
+                              return <div key={`empty-${day}`} className={`jobs-board-cell ${weekend ? "jobs-board-cell-weekend" : ""}`} />;
+                            })}
+                          </Fragment>
+                        ) : null}
+                        {assignedJobsForMonth.map((job) => (
+                          <Fragment key={job.id}>
+                            <div className="jobs-board-job">
+                              <Link href={jobDetailHref(job.id, "schedule")}>
+                                <div className="jobs-board-job-code">{job.companyJobNumber}</div>
+                                <div className="jobs-board-job-title">{job.title}</div>
+                              </Link>
+                            </div>
+                            {monthDays.map((day) => {
+                              const dayKey = `${scheduleYear}-${String(scheduleMonthNumber).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                              const current = new Date(scheduleYear, scheduleMonthNumber - 1, day);
+                              const weekend = current.getDay() === 0 || current.getDay() === 6;
+                              const scheduled = getAssignedUsersForDay(job, dayKey).includes(userId);
+                              return (
+                                <div key={`${job.id}-${dayKey}`} className={`jobs-board-cell ${weekend ? "jobs-board-cell-weekend" : ""}`}>
+                                  {scheduled ? (
+                                    <Link
+                                      className="jobs-board-chip"
+                                      href={jobDetailHref(job.id, "schedule")}
+                                      style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey, userId))}
+                                      title={`${job.companyJobNumber} - ${job.title}${job.scheduledStartTime && job.scheduledEndTime ? ` (${job.scheduledStartTime}-${job.scheduledEndTime})` : ""}`}
+                                    >
+                                      {job.companyJobNumber}
+                                    </Link>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Assigned work</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {assignedJobs.length === 0 ? <div className="muted">No assigned jobs.</div> : null}
+                        {assignedJobs.map((job) => (
+                          <Link key={job.id} className="panel" href={jobDetailHref(job.id, "schedule")} style={{ padding: 16 }}>
+                            <div style={{ fontWeight: 700 }}>{job.companyJobNumber}</div>
+                            <div className="muted">{job.title}</div>
+                            <div className="muted">
+                              {(job.scheduledDays ?? []).filter((day) => getAssignedUsersForDay(job, day).includes(userId)).map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")}
+                            </div>
+                            <div className="muted">{job.scheduledStartTime && job.scheduledEndTime ? `${job.scheduledStartTime} - ${job.scheduledEndTime}` : "Time TBC"}</div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Rough availability</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        <div className="callout"><strong>Normal shift:</strong> 08:00 - 17:00</div>
+                        <div className="callout"><strong>Base:</strong> Midlands Region</div>
+                        <div className="callout"><strong>This week:</strong> {assignedJobs.filter((job) => weekDays.some((day) => getAssignedUsersForDay(job, toDateKey(day)).includes(userId))).length} active booking(s)</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeTab === "information" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+                  <div className="stack">
+                    {demoProfileRows.map((row) => (
+                      <div key={row.label} className="panel" style={{ padding: 16 }}>
+                        <div className="muted">{row.label}</div>
+                        <div style={{ marginTop: 6, fontWeight: 700 }}>{row.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Profile summary</div>
+                    <div className="stack" style={{ gap: 10 }}>
+                      <div><strong>Name:</strong> {user?.fullName ?? "-"}</div>
+                      <div><strong>Email:</strong> {user?.email ?? "-"}</div>
+                      <div><strong>Role:</strong> {user?.role ?? "-"}</div>
+                      <div><strong>Employment started:</strong> 12/01/2024</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeTab === "training" ? (
+                <div className="stack">
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Training and certifications</div>
+                    <div className="stack" style={{ gap: 12 }}>
+                      {demoCertificates.map((certificate) => (
+                        <div key={certificate.name} className="panel" style={{ padding: 14 }}>
+                          <div style={{ fontWeight: 700 }}>{certificate.name}</div>
+                          <div className="muted">Status: {certificate.status}</div>
+                          <div className="muted">Expires: {certificate.expires}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Next recommended training</div>
+                    <div className="callout">Emergency First Aid refresher due next quarter.</div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeTab === "settings" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+                  <div className="stack">
+                    <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
+                    <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+                    <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
+                    <TextField label="New password (optional)" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />
+                    <button className="button" onClick={handleSave} type="button">Save Settings</button>
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Account notes</div>
+                    <div className="stack" style={{ gap: 12 }}>
+                      <div className="callout">Use this area after first setup for role changes and password resets only.</div>
+                      <div className="callout">Operational planning should happen from Schedule and Jobs, not here.</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
       )}
     </ProtectedWorkspace>
   );

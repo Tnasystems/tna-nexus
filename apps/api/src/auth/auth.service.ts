@@ -83,6 +83,7 @@ export class AuthService {
     const { prisma, company } = await this.tenantAccess.getTenantContextBySlug(tenantSlug);
     this.ensureCompanyCanLogin(company.status);
     const user = await prisma.user.findUnique({ where: { email } });
+    this.ensureUserCanLogin(user?.accountStatus);
 
     if (!user || !(await argon2.verify(user.passwordHash, password))) {
       return null;
@@ -124,6 +125,7 @@ export class AuthService {
       const user = await prisma.user.findUnique({ where: { email } });
       if (user) {
         this.ensureCompanyCanLogin(connection.company.status);
+        this.ensureUserCanLogin(user.accountStatus);
         matches.push({
           companyId: connection.companyId,
           slug: connection.slug,
@@ -159,6 +161,12 @@ export class AuthService {
   private ensureCompanyCanLogin(status: string) {
     if (status === "SUSPENDED") {
       throw new UnauthorizedException("This company is suspended. Contact your platform administrator.");
+    }
+  }
+
+  private ensureUserCanLogin(status?: string) {
+    if (status && status !== "ACTIVE") {
+      throw new UnauthorizedException("This account is disabled. Contact your manager or administrator.");
     }
   }
 }

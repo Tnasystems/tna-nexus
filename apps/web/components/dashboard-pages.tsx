@@ -85,6 +85,8 @@ interface UserRecord {
   email: string;
   fullName: string;
   role: string;
+  accountStatus?: string;
+  trainingRecordsJson?: string;
 }
 
 interface JobRecord {
@@ -149,6 +151,47 @@ function jobDetailHref(jobId: string, tab: "details" | "schedule" = "details") {
 
 function userDetailHref(userId: string, tab: "schedule" | "information" | "training" | "settings" = "information") {
   return `/dashboard/users/${encodeURIComponent(userId)}?tab=${tab}`;
+}
+
+interface TrainingRecord {
+  id: string;
+  name: string;
+  expiresOn: string;
+  certificateFileName?: string;
+}
+
+function parseTrainingRecords(value: string | null | undefined) {
+  if (!value) {
+    return [] as TrainingRecord[];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as TrainingRecord[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getTrainingState(user: UserRecord) {
+  const records = parseTrainingRecords(user.trainingRecordsJson);
+  if (records.length === 0) {
+    return "ok" as const;
+  }
+
+  const now = new Date();
+  const warningDate = new Date();
+  warningDate.setDate(now.getDate() + 30);
+
+  if (records.some((record) => new Date(`${record.expiresOn}T00:00:00`) < now)) {
+    return "expired" as const;
+  }
+
+  if (records.some((record) => new Date(`${record.expiresOn}T00:00:00`) <= warningDate)) {
+    return "warning" as const;
+  }
+
+  return "ok" as const;
 }
 
 function startOfWeek(day: Date) {
@@ -1639,6 +1682,7 @@ function CalendarWorkspace({
 export function UsersPage() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [form, setForm] = useState<{
     email: string;
@@ -1671,10 +1715,12 @@ export function UsersPage() {
       password: ""
     });
     setEditingUserId(null);
+    setShowCreate(false);
   }
 
   function startEdit(user: UserRecord) {
     setEditingUserId(user.id);
+    setShowCreate(true);
     setForm({
       email: user.email,
       fullName: user.fullName,
@@ -1703,8 +1749,15 @@ export function UsersPage() {
   return (
     <ProtectedWorkspace allow="tenant" description="Manage company users and role access." title="Team">
       {() => (
-        <PanelGrid>
-          <article className="panel" style={{ padding: 24 }}>
+        <div className="stack">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="muted">Current employees and their readiness status.</div>
+            <button className="button" onClick={() => setShowCreate((current) => !current)} type="button">
+              {showCreate ? "Close Create User" : "Create User"}
+            </button>
+          </div>
+          {showCreate ? (
+            <article className="panel" style={{ padding: 24 }}>
             <h2 style={{ marginTop: 0 }}>{editingUserId ? "Edit user" : "Create user"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
               <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
@@ -1725,26 +1778,43 @@ export function UsersPage() {
             </form>
             <ErrorText error={error} />
           </article>
+          ) : null}
           <article className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0 }}>Current users</h2>
+            <h2 style={{ marginTop: 0 }}>Current employees</h2>
             <div className="stack">
               {users.map((user) => (
                 <Link
                   key={user.id}
                   className="button button-subtle"
                   href={userDetailHref(user.id)}
-                  style={{ justifyContent: "space-between", width: "100%", borderRadius: 18, padding: 16 }}
+                  style={{
+                    justifyContent: "space-between",
+                    width: "100%",
+                    borderRadius: 18,
+                    padding: 16,
+                    background: getTrainingState(user) === "expired"
+                      ? "rgba(251, 113, 133, 0.16)"
+                      : getTrainingState(user) === "warning"
+                        ? "rgba(251, 191, 36, 0.18)"
+                        : undefined
+                  }}
                 >
                   <span style={{ display: "grid", gap: 6, textAlign: "left" }}>
                     <span style={{ fontWeight: 700 }}>{user.fullName}</span>
-                    <span className="muted">{user.email} - {user.role}</span>
+                    <span className="muted">{user.email} - {user.role} - {user.accountStatus ?? "ACTIVE"}</span>
                   </span>
-                  <span>Open</span>
+                  <span>
+                    {getTrainingState(user) === "expired"
+                      ? "Expired Training"
+                      : getTrainingState(user) === "warning"
+                        ? "Training Warning"
+                        : "Open"}
+                  </span>
                 </Link>
               ))}
             </div>
           </article>
-        </PanelGrid>
+        </div>
       )}
     </ProtectedWorkspace>
   );
@@ -1768,16 +1838,19 @@ export function UserRecordPage({
     const current = new Date();
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
   const [form, setForm] = useState<{
     email: string;
     fullName: string;
     role: string;
     password: string;
+    accountStatus: string;
   }>({
     email: "",
     fullName: "",
     role: ROLE_VALUES[1],
-    password: ""
+    password: "",
+    accountStatus: "ACTIVE"
   });
 
   async function load() {
@@ -1792,8 +1865,10 @@ export function UserRecordPage({
         email: nextUser.email,
         fullName: nextUser.fullName,
         role: nextUser.role,
-        password: ""
+        password: "",
+        accountStatus: nextUser.accountStatus ?? "ACTIVE"
       });
+      setTrainingRecords(parseTrainingRecords(nextUser.trainingRecordsJson));
       setError(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Failed to load employee.");
@@ -1812,6 +1887,8 @@ export function UserRecordPage({
         email: form.email,
         fullName: form.fullName,
         role: form.role,
+        accountStatus: form.accountStatus,
+        trainingRecordsJson: JSON.stringify(trainingRecords),
         ...(form.password ? { password: form.password } : {})
       };
       await apiRequest(`users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -1840,18 +1917,51 @@ export function UserRecordPage({
     return current >= monthStart && current <= monthEnd;
   }));
 
-  const demoCertificates = [
-    { name: "CSCS Card", status: "Valid", expires: "18/09/2027" },
-    { name: "Manual Handling", status: "Valid", expires: "04/02/2027" },
-    { name: "Working at Height", status: "Review Soon", expires: "22/05/2026" }
-  ];
-
   const demoProfileRows = [
     { label: "Mobile", value: user ? `07${user.id.slice(0, 2)} ${user.id.slice(2, 5)} ${user.id.slice(5, 9)}` : "-" },
     { label: "Depot", value: user?.role === "OPERATIVE" ? "Midlands Depot" : "Head Office" },
     { label: "Manager", value: user?.role === "OPERATIVE" ? "Marcus Cole" : "Alicia Warren" },
     { label: "Employment", value: user?.role === "OPERATIVE" ? "Full-time field operative" : "Management" }
   ];
+
+  function updateTrainingRecord(recordId: string, patch: Partial<TrainingRecord>) {
+    setTrainingRecords((current) => current.map((record) => (
+      record.id === recordId ? { ...record, ...patch } : record
+    )));
+  }
+
+  function addTrainingRecord() {
+    setTrainingRecords((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        name: "New Certificate",
+        expiresOn: "",
+        certificateFileName: ""
+      }
+    ]);
+  }
+
+  function removeTrainingRecord(recordId: string) {
+    setTrainingRecords((current) => current.filter((record) => record.id !== recordId));
+  }
+
+  async function setAccountStatus(status: "ACTIVE" | "SUSPENDED" | "DISABLED") {
+    setForm((current) => ({ ...current, accountStatus: status }));
+    try {
+      await apiRequest(`users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          accountStatus: status,
+          trainingRecordsJson: JSON.stringify(trainingRecords)
+        })
+      });
+      setSuccess(status === "ACTIVE" ? "Account enabled." : "Account status updated.");
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to update account status.");
+    }
+  }
 
   return (
     <ProtectedWorkspace allow="tenant" description="Review a team member, their schedule, training, and account settings." title={user ? user.fullName : "Team Member"}>
@@ -2058,6 +2168,7 @@ export function UserRecordPage({
                       <div><strong>Name:</strong> {user?.fullName ?? "-"}</div>
                       <div><strong>Email:</strong> {user?.email ?? "-"}</div>
                       <div><strong>Role:</strong> {user?.role ?? "-"}</div>
+                      <div><strong>Status:</strong> {user?.accountStatus ?? "ACTIVE"}</div>
                       <div><strong>Employment started:</strong> 12/01/2024</div>
                     </div>
                   </div>
@@ -2069,13 +2180,30 @@ export function UserRecordPage({
                   <div className="panel" style={{ padding: 20 }}>
                     <div style={{ fontWeight: 800, marginBottom: 12 }}>Training and certifications</div>
                     <div className="stack" style={{ gap: 12 }}>
-                      {demoCertificates.map((certificate) => (
-                        <div key={certificate.name} className="panel" style={{ padding: 14 }}>
-                          <div style={{ fontWeight: 700 }}>{certificate.name}</div>
-                          <div className="muted">Status: {certificate.status}</div>
-                          <div className="muted">Expires: {certificate.expires}</div>
+                      {trainingRecords.map((record) => (
+                        <div key={record.id} className="panel" style={{ padding: 14 }}>
+                          <div style={{ display: "grid", gap: 12 }}>
+                            <TextField label="Training name" onChange={(value) => updateTrainingRecord(record.id, { name: value })} value={record.name} />
+                            <TextField label="Expiry date" onChange={(value) => updateTrainingRecord(record.id, { expiresOn: value })} type="date" value={record.expiresOn} />
+                            <label className="field">
+                              <span>Certificate PDF/Image</span>
+                              <input
+                                className="input"
+                                onChange={(event) => updateTrainingRecord(record.id, {
+                                  certificateFileName: event.target.files?.[0]?.name ?? record.certificateFileName
+                                })}
+                                type="file"
+                              />
+                            </label>
+                            <div className="muted">{record.certificateFileName ? `Selected: ${record.certificateFileName}` : "No certificate selected."}</div>
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                              <button className="button button-subtle" onClick={() => removeTrainingRecord(record.id)} type="button">Remove Record</button>
+                            </div>
+                          </div>
                         </div>
                       ))}
+                      <button className="button button-subtle" onClick={addTrainingRecord} type="button">Add Training Record</button>
+                      <button className="button" onClick={handleSave} type="button">Save Training</button>
                     </div>
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
@@ -2091,8 +2219,14 @@ export function UserRecordPage({
                     <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
                     <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
                     <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
+                    <SelectField label="Account status" onChange={(value) => setForm((current) => ({ ...current, accountStatus: value }))} options={["ACTIVE", "SUSPENDED", "DISABLED"]} value={form.accountStatus} />
                     <TextField label="New password (optional)" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />
                     <button className="button" onClick={handleSave} type="button">Save Settings</button>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button className="button button-subtle" onClick={() => void setAccountStatus("SUSPENDED")} type="button">Suspend Account</button>
+                      <button className="button button-danger" onClick={() => void setAccountStatus("DISABLED")} type="button">Deactivate Account</button>
+                      <button className="button" onClick={() => void setAccountStatus("ACTIVE")} type="button">Enable Account</button>
+                    </div>
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
                     <div style={{ fontWeight: 800, marginBottom: 12 }}>Account notes</div>

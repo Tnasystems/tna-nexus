@@ -34,15 +34,22 @@ export class TenantAccessService {
       throw new ForbiddenException("This company is suspended.");
     }
 
+    const prisma = this.tenantFactory.getClient(
+      this.toDatabaseUrl(
+        metadata.databaseName,
+        metadata.databaseUser,
+        this.secretCipher.decrypt(metadata.databasePasswordEncrypted ?? "")
+      )
+    );
+    const currentUser = await prisma.user.findUnique({ where: { id: user.sub } });
+
+    if (!currentUser || currentUser.accountStatus !== "ACTIVE") {
+      throw new ForbiddenException("This user account is disabled.");
+    }
+
     return {
       company,
-      prisma: this.tenantFactory.getClient(
-        this.toDatabaseUrl(
-          metadata.databaseName,
-          metadata.databaseUser,
-          this.secretCipher.decrypt(metadata.databasePasswordEncrypted ?? "")
-        )
-      )
+      prisma
     };
   }
 

@@ -2,6 +2,8 @@ import { ApiProperty, PartialType } from "@nestjs/swagger";
 import { ROLE_VALUES } from "@tna-nexus/shared";
 import { IsEmail, IsIn, IsOptional, IsString, MinLength } from "class-validator";
 
+const ACCOUNT_STATUS_VALUES = ["ACTIVE", "SUSPENDED", "DISABLED"] as const;
+
 export class CreateUserDto {
   @ApiProperty()
   @IsEmail()
@@ -14,6 +16,16 @@ export class CreateUserDto {
   @ApiProperty({ enum: ROLE_VALUES })
   @IsIn(ROLE_VALUES)
   role!: string;
+
+  @ApiProperty({ enum: ACCOUNT_STATUS_VALUES, required: false })
+  @IsOptional()
+  @IsIn(ACCOUNT_STATUS_VALUES)
+  accountStatus?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  trainingRecordsJson?: string;
 
   @ApiProperty()
   @IsString()
@@ -42,4 +54,14 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsString()
   @MinLength(10)
   override password?: string;
+
+  @ApiProperty({ enum: ACCOUNT_STATUS_VALUES, required: false })
+  @IsOptional()
+  @IsIn(ACCOUNT_STATUS_VALUES)
+  override accountStatus?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  override trainingRecordsJson?: string;
 }

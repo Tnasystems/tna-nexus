@@ -33,6 +33,8 @@ export class UsersService {
         email: dto.email,
         fullName: dto.fullName,
         role: dto.role,
+        accountStatus: dto.accountStatus ?? "ACTIVE",
+        trainingRecordsJson: dto.trainingRecordsJson ?? "[]",
         passwordHash: await argon2.hash(dto.password)
       }
     });
@@ -52,6 +54,8 @@ export class UsersService {
         email: dto.email ?? undefined,
         fullName: dto.fullName ?? undefined,
         role: dto.role ?? undefined,
+        accountStatus: dto.accountStatus ?? undefined,
+        trainingRecordsJson: dto.trainingRecordsJson ?? undefined,
         passwordHash: dto.password ? await argon2.hash(dto.password) : undefined
       }
     });

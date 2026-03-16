@@ -13,6 +13,8 @@ model User {
   email          String           @unique
   fullName       String
   role           String
+  accountStatus  String           @default("ACTIVE")
+  trainingRecordsJson String      @default("[]")
   passwordHash   String
   phone          String?
   createdAt      DateTime         @default(now())

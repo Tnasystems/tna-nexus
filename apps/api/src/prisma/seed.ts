@@ -58,12 +58,15 @@ async function main() {
 
     const defaultPasswordHash = await argon2.hash("ChangeMe123!");
     const team = [
-      { id: randomUUID(), email: "director@demo-industrial.local", fullName: "Alicia Warren", role: "DIRECTOR" },
-      { id: randomUUID(), email: "manager@demo-industrial.local", fullName: "Marcus Cole", role: "MANAGER" },
-      { id: randomUUID(), email: "operative1@demo-industrial.local", fullName: "Sanjay Patel", role: "OPERATIVE" },
-      { id: randomUUID(), email: "operative2@demo-industrial.local", fullName: "Amy Reeves", role: "OPERATIVE" },
-      { id: randomUUID(), email: "operative3@demo-industrial.local", fullName: "Chris Moore", role: "OPERATIVE" }
-    ] as const;
+      { id: randomUUID(), email: "director@demo-industrial.local", fullName: "Alicia Warren", role: "DIRECTOR", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("healthy") },
+      { id: randomUUID(), email: "manager@demo-industrial.local", fullName: "Marcus Cole", role: "MANAGER", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("warning") },
+      { id: randomUUID(), email: "operative1@demo-industrial.local", fullName: "Sanjay Patel", role: "OPERATIVE", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("healthy") },
+      { id: randomUUID(), email: "operative2@demo-industrial.local", fullName: "Amy Reeves", role: "OPERATIVE", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("expired") },
+      { id: randomUUID(), email: "operative3@demo-industrial.local", fullName: "Chris Moore", role: "OPERATIVE", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("warning") },
+      { id: randomUUID(), email: "operative4@demo-industrial.local", fullName: "Jordan Ellis", role: "OPERATIVE", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("healthy") },
+      { id: randomUUID(), email: "operative5@demo-industrial.local", fullName: "Lewis Grant", role: "OPERATIVE", accountStatus: "ACTIVE", trainingRecordsJson: buildTrainingRecords("warning") },
+      { id: randomUUID(), email: "operative6@demo-industrial.local", fullName: "Megan Frost", role: "OPERATIVE", accountStatus: "DISABLED", trainingRecordsJson: buildTrainingRecords("expired") }
+    ];
 
     await tenantPrisma.user.createMany({
       data: team.map((member) => ({
@@ -109,9 +112,9 @@ async function main() {
         ],
         dailyAssignmentsJson: JSON.stringify({
           [toDateKey(new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000))]: [team[3].id, team[4].id],
-          [toDateKey(new Date(startOfDay.getTime() + 2 * 24 * 60 * 60 * 1000))]: [team[3].id]
+          [toDateKey(new Date(startOfDay.getTime() + 2 * 24 * 60 * 60 * 1000))]: [team[3].id, team[5].id]
         }),
-        assignedOperativeIds: [team[3].id, team[4].id]
+        assignedOperativeIds: [team[3].id, team[4].id, team[5].id]
       },
       {
         id: randomUUID(),
@@ -129,10 +132,10 @@ async function main() {
           toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))
         ],
         dailyAssignmentsJson: JSON.stringify({
-          [toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000))]: [team[2].id, team[3].id],
-          [toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))]: [team[3].id]
+          [toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000))]: [team[2].id, team[3].id, team[6].id],
+          [toDateKey(new Date(startOfDay.getTime() + 5 * 24 * 60 * 60 * 1000))]: [team[3].id, team[6].id]
         }),
-        assignedOperativeIds: [team[2].id, team[3].id]
+        assignedOperativeIds: [team[2].id, team[3].id, team[6].id]
       },
       {
         id: randomUUID(),
@@ -168,9 +171,62 @@ async function main() {
         ],
         dailyAssignmentsJson: JSON.stringify({
           [toDateKey(new Date(startOfDay.getTime() + 10 * 24 * 60 * 60 * 1000))]: [team[2].id, team[4].id],
-          [toDateKey(new Date(startOfDay.getTime() + 11 * 24 * 60 * 60 * 1000))]: [team[4].id]
+          [toDateKey(new Date(startOfDay.getTime() + 11 * 24 * 60 * 60 * 1000))]: [team[4].id, team[5].id]
         }),
-        assignedOperativeIds: [team[2].id, team[4].id]
+        assignedOperativeIds: [team[2].id, team[4].id, team[5].id]
+      },
+      {
+        id: randomUUID(),
+        title: "Retail park emergency lighting",
+        companyJobNumber: "TNA-DEMO-0006",
+        customerJobNumber: "CUST-DEMO-5401",
+        siteAddress: "Central Retail Park, Leicester",
+        status: "SCHEDULED",
+        scheduledFor: new Date(startOfDay.getTime() + 3 * 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (3 * 24 + 4) * 60 * 60 * 1000),
+        scheduledStartTime: "18:00",
+        scheduledEndTime: "21:00",
+        scheduledDays: [toDateKey(new Date(startOfDay.getTime() + 3 * 24 * 60 * 60 * 1000))],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime() + 3 * 24 * 60 * 60 * 1000))]: [team[2].id]
+        }),
+        assignedOperativeIds: [team[2].id]
+      },
+      {
+        id: randomUUID(),
+        title: "Future shutdown prep",
+        companyJobNumber: "TNA-DEMO-0007",
+        customerJobNumber: "CUST-DEMO-5500",
+        siteAddress: "North Point Manufacturing, Derby",
+        status: "DRAFT",
+        scheduledFor: new Date(startOfDay.getTime() + 16 * 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (18 * 24 + 8) * 60 * 60 * 1000),
+        scheduledStartTime: "08:00",
+        scheduledEndTime: "17:00",
+        scheduledDays: [
+          toDateKey(new Date(startOfDay.getTime() + 16 * 24 * 60 * 60 * 1000)),
+          toDateKey(new Date(startOfDay.getTime() + 17 * 24 * 60 * 60 * 1000)),
+          toDateKey(new Date(startOfDay.getTime() + 18 * 24 * 60 * 60 * 1000))
+        ],
+        dailyAssignmentsJson: JSON.stringify({}),
+        assignedOperativeIds: []
+      },
+      {
+        id: randomUUID(),
+        title: "Double-booked clash test",
+        companyJobNumber: "TNA-DEMO-0008",
+        customerJobNumber: "CUST-DEMO-5602",
+        siteAddress: "A426 Leicester Rd, Rugby",
+        status: "SCHEDULED",
+        scheduledFor: new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000),
+        scheduledTo: new Date(startOfDay.getTime() + (4 * 24 + 4) * 60 * 60 * 1000),
+        scheduledStartTime: "09:00",
+        scheduledEndTime: "12:00",
+        scheduledDays: [toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000))],
+        dailyAssignmentsJson: JSON.stringify({
+          [toDateKey(new Date(startOfDay.getTime() + 4 * 24 * 60 * 60 * 1000))]: [team[2].id]
+        }),
+        assignedOperativeIds: [team[2].id]
       }
     ];
 
@@ -260,4 +316,23 @@ main().catch((error) => {
 
 function toDateKey(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function buildTrainingRecords(state: "healthy" | "warning" | "expired") {
+  const records = {
+    healthy: [
+      { id: randomUUID(), name: "CSCS Card", expiresOn: "2027-09-18", certificateFileName: "cscs-card.pdf" },
+      { id: randomUUID(), name: "Manual Handling", expiresOn: "2027-02-04", certificateFileName: "manual-handling.pdf" }
+    ],
+    warning: [
+      { id: randomUUID(), name: "Working at Height", expiresOn: "2026-05-22", certificateFileName: "working-at-height.pdf" },
+      { id: randomUUID(), name: "Asbestos Awareness", expiresOn: "2026-04-18", certificateFileName: "asbestos-awareness.pdf" }
+    ],
+    expired: [
+      { id: randomUUID(), name: "IPAF", expiresOn: "2026-02-15", certificateFileName: "ipaf-card.pdf" },
+      { id: randomUUID(), name: "First Aid", expiresOn: "2026-03-01", certificateFileName: "first-aid.pdf" }
+    ]
+  };
+
+  return JSON.stringify(records[state]);
 }

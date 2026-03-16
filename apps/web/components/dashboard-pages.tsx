@@ -610,8 +610,11 @@ export function CalendarPage() {
   });
 
   const [year, month] = calendarMonth.split("-").map((part) => Number(part));
+  const firstDayOfMonth = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
   const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const leadingEmptyDays = (firstDayOfMonth.getDay() + 6) % 7;
+  const usersById = new Map(users.map((user) => [user.id, user]));
   const jobsForMonth = jobs.filter((job) => {
     if (!job.scheduledFor) {
       return false;
@@ -621,9 +624,9 @@ export function CalendarPage() {
     return scheduled.getFullYear() === year && scheduled.getMonth() + 1 === month;
   });
 
-  function jobsForUserOnDay(userId: string, day: number) {
+  function jobsForDay(day: number) {
     return jobsForMonth.filter((job) => {
-      if (!job.scheduledFor || !(job.assignedOperativeIds ?? []).includes(userId)) {
+      if (!job.scheduledFor) {
         return false;
       }
 
@@ -639,37 +642,42 @@ export function CalendarPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div>
               <h2 style={{ margin: 0 }}>Staff job calendar</h2>
-              <div className="muted" style={{ marginTop: 8 }}>Employees down the side, month days across the top, assigned jobs in each day cell.</div>
+              <div className="muted" style={{ marginTop: 8 }}>Month view with each day showing scheduled jobs and assigned employees.</div>
             </div>
             <label className="field" style={{ minWidth: 220 }}>
               <span>Calendar month</span>
               <input className="input" onChange={(event) => setCalendarMonth(event.target.value)} type="month" value={calendarMonth} />
             </label>
           </div>
-          <div className="calendar-wrap" style={{ marginTop: 20 }}>
-            <div className="jobs-calendar">
-              <div className="calendar-corner">Employee</div>
-              {monthDays.map((day) => (
-                <div key={day} className="calendar-head">{day}</div>
-              ))}
-              {users.map((user) => (
-                <Fragment key={user.id}>
-                  <div className="calendar-name">{user.fullName}</div>
-                  {monthDays.map((day) => {
-                    const assignedJobs = jobsForUserOnDay(user.id, day);
-                    return (
-                      <div key={`${user.id}-${day}`} className="calendar-cell">
-                        {assignedJobs.map((job) => (
-                          <div key={job.id} className="calendar-job">
-                            {job.companyJobNumber}
-                          </div>
-                        ))}
+          <div className="calendar-month" style={{ marginTop: 20 }}>
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+              <div key={label} className="calendar-weekday">{label}</div>
+            ))}
+            {Array.from({ length: leadingEmptyDays }).map((_, index) => (
+              <div key={`empty-${index}`} className="calendar-day calendar-day-empty" />
+            ))}
+            {monthDays.map((day) => {
+              const dayJobs = jobsForDay(day);
+              return (
+                <div key={day} className="calendar-day">
+                  <div className="calendar-day-number">{day}</div>
+                  <div className="calendar-day-content">
+                    {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
+                    {dayJobs.map((job) => (
+                      <div key={job.id} className="calendar-entry">
+                        <div className="calendar-entry-title">{job.companyJobNumber}</div>
+                        <div className="calendar-entry-subtitle">{job.title}</div>
+                        <div className="calendar-entry-subtitle">
+                          {(job.assignedOperativeIds ?? []).length > 0
+                            ? job.assignedOperativeIds.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
+                            : "Unassigned"}
+                        </div>
                       </div>
-                    );
-                  })}
-                </Fragment>
-              ))}
-            </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </article>
       )}

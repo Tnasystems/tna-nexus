@@ -193,60 +193,67 @@ main {
   color: #ffd7de;
 }
 
-.calendar-wrap {
-  overflow-x: auto;
+.calendar-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.jobs-calendar {
-  display: grid;
-  grid-template-columns: 180px repeat(31, minmax(82px, 1fr));
-  min-width: max-content;
+.calendar-weekday {
+  padding: 10px 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.calendar-day {
+  min-height: 170px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  overflow: hidden;
-}
-
-.calendar-corner,
-.calendar-head,
-.calendar-name,
-.calendar-cell {
-  min-height: 72px;
-  padding: 10px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.calendar-corner,
-.calendar-head,
-.calendar-name {
-  background: rgba(255, 255, 255, 0.04);
-  font-weight: 700;
-}
-
-.calendar-head {
-  text-align: center;
-}
-
-.calendar-name {
-  display: flex;
-  align-items: center;
-}
-
-.calendar-cell {
+  background: rgba(255, 255, 255, 0.03);
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 10px;
 }
 
-.calendar-job {
-  border: 0;
+.calendar-day-empty {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.35;
+}
+
+.calendar-day-number {
+  font-weight: 800;
+}
+
+.calendar-day-content {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-entry {
   border-radius: 12px;
   background: var(--accent-soft);
-  color: var(--text);
-  padding: 6px 8px;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.calendar-entry-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.calendar-entry-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.calendar-empty-text {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 @media (max-width: 960px) {
@@ -261,6 +268,10 @@ main {
   .auth-grid {
     grid-template-columns: 1fr;
   }
+
+  .calendar-month {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -269,6 +280,10 @@ main {
   }
 
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-month {
     grid-template-columns: 1fr;
   }
 }

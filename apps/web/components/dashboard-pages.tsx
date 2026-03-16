@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, Fragment, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProtectedWorkspace } from "./protected-workspace";
 import { apiRequest } from "../lib/api";
@@ -523,6 +524,24 @@ export function JobsPage() {
     });
   }
 
+  useEffect(() => {
+    if (typeof window === "undefined" || jobs.length === 0) {
+      return;
+    }
+
+    const requestedJobId = new URLSearchParams(window.location.search).get("edit");
+    if (!requestedJobId) {
+      return;
+    }
+
+    const job = jobs.find((entry) => entry.id === requestedJobId);
+    if (!job) {
+      return;
+    }
+
+    startEdit(job);
+  }, [jobs]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (editingJobId) {
@@ -664,7 +683,7 @@ export function CalendarPage() {
                   <div className="calendar-day-content">
                     {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
                     {dayJobs.map((job) => (
-                      <div key={job.id} className="calendar-entry">
+                      <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
                         <div className="calendar-entry-title">{job.companyJobNumber}</div>
                         <div className="calendar-entry-subtitle">{job.title}</div>
                         <div className="calendar-entry-subtitle">
@@ -672,7 +691,7 @@ export function CalendarPage() {
                             ? job.assignedOperativeIds.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
                             : "Unassigned"}
                         </div>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 </div>

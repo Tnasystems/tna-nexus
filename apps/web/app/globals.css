@@ -271,8 +271,8 @@ option {
 
 .schedule-board {
   display: grid;
-  grid-template-columns: 220px repeat(14, minmax(110px, 1fr));
-  min-width: 1780px;
+  grid-template-columns: 220px repeat(7, minmax(120px, 1fr));
+  min-width: 1060px;
 }
 
 .schedule-board-corner,
@@ -373,6 +373,104 @@ option {
   font-size: 11px;
   line-height: 1.15;
   opacity: 0.95;
+}
+
+.jobs-board-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.jobs-board {
+  display: grid;
+  min-width: 100%;
+}
+
+.jobs-board-corner,
+.jobs-board-header,
+.jobs-board-job,
+.jobs-board-cell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.jobs-board-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 10px 12px;
+  background: rgba(19, 37, 58, 0.98);
+}
+
+.jobs-board-header {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.jobs-board-header-weekend {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.jobs-board-job {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-height: 42px;
+  padding: 8px 10px;
+  display: grid;
+  align-content: center;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.jobs-board-job-code {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.jobs-board-job-title {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.1;
+}
+
+.jobs-board-cell {
+  min-height: 42px;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.jobs-board-cell-weekend {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.035),
+      rgba(255, 255, 255, 0.035) 6px,
+      rgba(255, 255, 255, 0.015) 6px,
+      rgba(255, 255, 255, 0.015) 12px
+    );
+}
+
+.jobs-board-chip {
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 3px;
+  border: 1px solid;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  overflow: hidden;
 }
 
 .assignment-pill {

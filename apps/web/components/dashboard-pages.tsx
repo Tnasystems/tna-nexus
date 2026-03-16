@@ -932,12 +932,11 @@ function CalendarWorkspace({
   const firstDayOfMonth = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
   const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
-  const leadingEmptyDays = (firstDayOfMonth.getDay() + 6) % 7;
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeUsers = users.filter((user) => user.role === "OPERATIVE");
   const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
   const currentWeekStart = startOfWeek(new Date(`${weekFocusDate}T00:00:00`));
-  const boardDays = Array.from({ length: 14 }, (_, index) => {
+  const boardDays = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(currentWeekStart);
     day.setDate(currentWeekStart.getDate() + index);
     return day;
@@ -965,27 +964,15 @@ function CalendarWorkspace({
     }
   }, [isManager, session.user.sub]);
 
-  function jobsForDay(day: number) {
-    const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return jobsForMonth.filter((job) => {
-      if (selectedEmployeeId !== "all" && !getAssignedUsersForDay(job, dayKey).includes(selectedEmployeeId)) {
-        return false;
-      }
-      if ((job.scheduledDays ?? []).length > 0) {
-        return job.scheduledDays.includes(dayKey);
-      }
-
-      if (!job.scheduledFor) {
-        return false;
-      }
-
-      return new Date(job.scheduledFor).getDate() === day;
-    });
-  }
-
   function jobsForEmployeeOnDay(userId: string, day: string) {
     return jobs.filter((job) => getAssignedUsersForDay(job, day).includes(userId));
   }
+
+  const visibleJobsForBoard = selectedEmployeeId === "all"
+    ? jobsForMonth
+    : jobsForMonth.filter((job) =>
+        Object.values(getJobDailyAssignments(job)).some((assignedUsers) => assignedUsers.includes(selectedEmployeeId))
+      );
 
   const showTeamWeek = isManager && selectedEmployeeId === "all" && calendarMode === "team-week";
 
@@ -1105,39 +1092,52 @@ function CalendarWorkspace({
               </div>
             </div>
           ) : (
-            <div className="calendar-month" style={{ marginTop: 20 }}>
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
-                <div key={label} className="calendar-weekday">{label}</div>
-              ))}
-              {Array.from({ length: leadingEmptyDays }).map((_, index) => (
-                <div key={`empty-${index}`} className="calendar-day calendar-day-empty" />
-              ))}
-              {monthDays.map((day) => {
-                const dayJobs = jobsForDay(day);
-                return (
-                  <div key={day} className="calendar-day">
-                    <div className="calendar-day-number">{day}</div>
-                    <div className="calendar-day-content">
-                      {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
-                      {dayJobs.map((job) => {
-                        const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                        const namesForDay = getAssignedUsersForDay(job, dayKey);
-                        return (
-                          <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
-                            <div className="calendar-entry-title">{job.companyJobNumber}</div>
-                            <div className="calendar-entry-subtitle">{job.title}</div>
-                            <div className="calendar-entry-subtitle">
-                              {namesForDay.length > 0
-                                ? namesForDay.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
-                                : "Unassigned"}
-                            </div>
-                          </Link>
-                        );
-                      })}
+            <div className="jobs-board-wrap" style={{ marginTop: 20 }}>
+              <div className="jobs-board" style={{ gridTemplateColumns: `240px repeat(${daysInMonth}, minmax(28px, 1fr))` }}>
+                <div className="jobs-board-corner">
+                  <div style={{ fontWeight: 800 }}>All Jobs</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{firstDayOfMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</div>
+                </div>
+                {monthDays.map((day) => {
+                  const current = new Date(year, month - 1, day);
+                  const weekend = current.getDay() === 0 || current.getDay() === 6;
+                  return (
+                    <div key={day} className={`jobs-board-header ${weekend ? "jobs-board-header-weekend" : ""}`}>
+                      <div>{day}</div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+                {visibleJobsForBoard.map((job) => (
+                  <Fragment key={job.id}>
+                    <div className="jobs-board-job">
+                      <Link href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
+                        <div className="jobs-board-job-code">{job.companyJobNumber}</div>
+                        <div className="jobs-board-job-title">{job.title}</div>
+                      </Link>
+                    </div>
+                    {monthDays.map((day) => {
+                      const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                      const current = new Date(year, month - 1, day);
+                      const weekend = current.getDay() === 0 || current.getDay() === 6;
+                      const scheduled = (job.scheduledDays ?? []).includes(dayKey);
+                      return (
+                        <div key={`${job.id}-${dayKey}`} className={`jobs-board-cell ${weekend ? "jobs-board-cell-weekend" : ""}`}>
+                          {scheduled ? (
+                            <Link
+                              className="jobs-board-chip"
+                              href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}
+                              style={getJobChipStyle(job.status)}
+                              title={`${job.companyJobNumber} - ${job.title}`}
+                            >
+                              {job.companyJobNumber}
+                            </Link>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </Fragment>
+                ))}
+              </div>
             </div>
           )}
         </article>

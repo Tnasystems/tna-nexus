@@ -696,6 +696,8 @@ export function JobsPage() {
     event.preventDefault();
     const payload = {
       ...form,
+      scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
+      scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
       dailyAssignments: Object.fromEntries(
         form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
       )
@@ -787,7 +789,7 @@ export function JobsPage() {
                     {assignmentWarnings.map((warning) => (
                       <div key={`${warning.day}-${warning.userId}-${warning.companyJobNumber}`}>
                         {warning.userName} already has {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
-                        Remove them from that day below if they need relocating.
+                        You can still save this job, or remove them from that day below if they need relocating.
                       </div>
                     ))}
                   </div>
@@ -859,16 +861,19 @@ export function CalendarPage() {
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
   });
   const [weekFocusDate, setWeekFocusDate] = useState(() => toDateKey(new Date()));
+  const [calendarMode, setCalendarMode] = useState<"team-week" | "show-all-jobs">("team-week");
 
   return (
     <ProtectedWorkspace allow="tenant" description="Monthly assignment view by employee and scheduled job date." title="Calendar">
       {(session) => (
         <CalendarWorkspace
           calendarMonth={calendarMonth}
+          calendarMode={calendarMode}
           error={error}
           jobs={jobs}
           session={session}
           setCalendarMonth={setCalendarMonth}
+          setCalendarMode={setCalendarMode}
           setWeekFocusDate={setWeekFocusDate}
           users={users}
           weekFocusDate={weekFocusDate}
@@ -893,7 +898,9 @@ function CalendarWorkspace({
   users: UserRecord[];
   error: string | null;
   calendarMonth: string;
+  calendarMode: "team-week" | "show-all-jobs";
   setCalendarMonth: (value: string) => void;
+  setCalendarMode: (value: "team-week" | "show-all-jobs") => void;
   weekFocusDate: string;
   setWeekFocusDate: (value: string) => void;
 }>) {
@@ -960,6 +967,8 @@ function CalendarWorkspace({
     return jobs.filter((job) => getAssignedUsersForDay(job, day).includes(userId));
   }
 
+  const showTeamWeek = isManager && selectedEmployeeId === "all" && calendarMode === "team-week";
+
   return (
     <article className="panel" style={{ padding: 24 }}>
           <ErrorText error={error} />
@@ -969,7 +978,7 @@ function CalendarWorkspace({
               <div className="muted" style={{ marginTop: 8 }}>Month view with each day showing scheduled jobs and assigned employees.</div>
             </div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {isManager && selectedEmployeeId === "all" ? (
+              {showTeamWeek ? (
                 <label className="field" style={{ minWidth: 220 }}>
                   <span>Week of</span>
                   <input className="input" onChange={(event) => setWeekFocusDate(event.target.value)} type="date" value={weekFocusDate} />
@@ -994,9 +1003,30 @@ function CalendarWorkspace({
                   ))}
                 </select>
               </label>
+              {isManager ? (
+                <div className="field" style={{ minWidth: 260 }}>
+                  <span>View mode</span>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      className={calendarMode === "team-week" ? "button" : "button button-subtle"}
+                      onClick={() => setCalendarMode("team-week")}
+                      type="button"
+                    >
+                      Team Week
+                    </button>
+                    <button
+                      className={calendarMode === "show-all-jobs" ? "button" : "button button-subtle"}
+                      onClick={() => setCalendarMode("show-all-jobs")}
+                      type="button"
+                    >
+                      Show All Jobs
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
-          {isManager && selectedEmployeeId === "all" ? (
+          {showTeamWeek ? (
             <div style={{ marginTop: 20, overflowX: "auto" }}>
               <div style={{ display: "grid", gridTemplateColumns: "220px repeat(7, minmax(180px, 1fr))", minWidth: 1300 }}>
                 <div className="calendar-weekday">Employee</div>
@@ -1050,13 +1080,14 @@ function CalendarWorkspace({
                       {dayJobs.length === 0 ? <div className="calendar-empty-text">No jobs</div> : null}
                       {dayJobs.map((job) => {
                         const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                        const namesForDay = getAssignedUsersForDay(job, dayKey);
                         return (
                           <Link key={job.id} className="calendar-entry" href={`/dashboard/jobs?edit=${encodeURIComponent(job.id)}`}>
                             <div className="calendar-entry-title">{job.companyJobNumber}</div>
                             <div className="calendar-entry-subtitle">{job.title}</div>
                             <div className="calendar-entry-subtitle">
-                              {getAssignedUsersForDay(job, dayKey).length > 0
-                                ? getAssignedUsersForDay(job, dayKey).map((id) => usersById.get(id)?.fullName ?? id).join(", ")
+                              {namesForDay.length > 0
+                                ? namesForDay.map((id) => usersById.get(id)?.fullName ?? id).join(", ")
                                 : "Unassigned"}
                             </div>
                           </Link>

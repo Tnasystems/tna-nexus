@@ -16,7 +16,6 @@ export class JobsService {
   async create(user: JwtUser, dto: CreateJobDto) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.buildScheduling(dto);
-    await this.ensureNoAssignmentClashes(prisma, dailyAssignments);
     return prisma.job.create({
       data: {
         id: randomUUID(),
@@ -43,7 +42,6 @@ export class JobsService {
     }
 
     const scheduling = this.buildScheduling(dto, existing);
-    await this.ensureNoAssignmentClashes(prisma, scheduling.dailyAssignments, jobId);
 
     return prisma.job.update({
       where: { id: jobId },
@@ -211,44 +209,4 @@ export class JobsService {
     return Object.fromEntries(scheduledDays.map((day) => [day, fallbackUsers])) as Record<string, string[]>;
   }
 
-  private async ensureNoAssignmentClashes(
-    prisma: Awaited<ReturnType<TenantAccessService["getTenantContext"]>>["prisma"],
-    dailyAssignments: Record<string, string[]>,
-    excludeJobId?: string
-  ) {
-    const scheduledDays = Object.keys(dailyAssignments);
-    const assignedOperativeIds = [...new Set(Object.values(dailyAssignments).flat())];
-
-    if (assignedOperativeIds.length === 0 || scheduledDays.length === 0) {
-      return;
-    }
-
-    const possibleConflicts = await prisma.job.findMany({
-      where: {
-        ...(excludeJobId ? { id: { not: excludeJobId } } : {}),
-        OR: assignedOperativeIds.map((operativeId) => ({
-          assignedOperativeIds: { has: operativeId }
-        }))
-      }
-    });
-
-    for (const conflict of possibleConflicts) {
-      const conflictAssignments = this.withFallbackAssignments(
-        this.parseDailyAssignments(conflict.dailyAssignmentsJson),
-        this.deriveExistingScheduledDays(conflict),
-        conflict.assignedOperativeIds
-      );
-      for (const day of scheduledDays) {
-        const requestedUsers = dailyAssignments[day] ?? [];
-        const conflictingUsers = conflictAssignments[day] ?? [];
-        const overlappingUsers = requestedUsers.filter((userId) => conflictingUsers.includes(userId));
-
-        if (overlappingUsers.length > 0) {
-          throw new BadRequestException(
-            `Assigned operatives already have another job on ${day}.`
-          );
-        }
-      }
-    }
-  }
 }

@@ -45,7 +45,14 @@ export class CreateJobDto {
   @IsString({ each: true })
   assignedOperativeIds?: string[];
 
-  @ApiProperty({ required: false, type: "object", additionalProperties: { type: "array", items: { type: "string" } } })
+  @ApiProperty({
+    required: false,
+    type: Object,
+    additionalProperties: {
+      type: "array",
+      items: { type: "string" }
+    }
+  })
   @IsOptional()
   @IsObject()
   dailyAssignments?: Record<string, string[]>;

@@ -889,7 +889,9 @@ function CalendarWorkspace({
   users,
   error,
   calendarMonth,
+  calendarMode,
   setCalendarMonth,
+  setCalendarMode,
   weekFocusDate,
   setWeekFocusDate
 }: Readonly<{

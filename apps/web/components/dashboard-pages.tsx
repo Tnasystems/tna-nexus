@@ -980,7 +980,17 @@ export function JobRecordPage({
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    title: string;
+    companyJobNumber: string;
+    customerJobNumber: string;
+    siteAddress: string;
+    status: string;
+    scheduledStartTime: string;
+    scheduledEndTime: string;
+    scheduledDays: string[];
+    dailyAssignments: Record<string, string[]>;
+  }>({
     title: "",
     companyJobNumber: "",
     customerJobNumber: "",

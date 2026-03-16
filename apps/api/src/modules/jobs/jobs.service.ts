@@ -1,8 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { JwtUser } from "@tna-nexus/shared";
 import { TenantAccessService } from "../../auth/tenant-access.service";
-import { CreateJobDto } from "./jobs.dto";
+import { CreateJobDto, UpdateJobDto } from "./jobs.dto";
 
 @Injectable()
 export class JobsService {
@@ -25,6 +25,28 @@ export class JobsService {
         status: dto.status,
         scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : null,
         assignedOperativeIds: dto.assignedOperativeIds ?? []
+      }
+    });
+  }
+
+  async update(user: JwtUser, jobId: string, dto: UpdateJobDto) {
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const existing = await prisma.job.findUnique({ where: { id: jobId } });
+
+    if (!existing) {
+      throw new NotFoundException("Job not found.");
+    }
+
+    return prisma.job.update({
+      where: { id: jobId },
+      data: {
+        title: dto.title ?? undefined,
+        companyJobNumber: dto.companyJobNumber ?? undefined,
+        customerJobNumber: dto.customerJobNumber ?? undefined,
+        siteAddress: dto.siteAddress ?? undefined,
+        status: dto.status ?? undefined,
+        scheduledFor: dto.scheduledFor === undefined ? undefined : dto.scheduledFor ? new Date(dto.scheduledFor) : null,
+        assignedOperativeIds: dto.assignedOperativeIds ?? undefined
       }
     });
   }

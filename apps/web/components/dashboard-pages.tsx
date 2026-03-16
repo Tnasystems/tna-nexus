@@ -58,23 +58,58 @@ function SelectField({
   );
 }
 
+interface CompanySummary {
+  company: { name: string; slug: string };
+  metrics: { users: number; jobs: number; assets: number };
+}
+
+interface ReportingSummary {
+  jobs: number;
+  completedJobs: number;
+  openCompliance: number;
+  activeUsers: number;
+}
+
+interface NotificationRecord {
+  id: string;
+  title: string;
+  channel: string;
+  status: string;
+}
+
+interface UserRecord {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+}
+
+interface JobRecord {
+  id: string;
+  title: string;
+  companyJobNumber: string;
+  customerJobNumber: string;
+  siteAddress: string;
+  status: string;
+  scheduledFor: string | null;
+  assignedOperativeIds: string[];
+}
+
 export function TenantOverviewPage() {
   const [data, setData] = useState<{
-    company?: { company: { name: string; slug: string }; metrics: { users: number; jobs: number; assets: number } };
-    reporting?: { jobs: number; completedJobs: number; openCompliance: number; activeUsers: number };
-    notifications?: Array<{ id: string; title: string; channel: string; status: string }>;
-    compliance?: Array<{ id: string; title: string; dueDate: string; status: string }>;
+    company?: CompanySummary;
+    reporting?: ReportingSummary;
+    notifications?: NotificationRecord[];
   }>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      apiRequest<{ company: { name: string; slug: string }; metrics: { users: number; jobs: number; assets: number } }>("companies/me"),
-      apiRequest<{ jobs: number; completedJobs: number; openCompliance: number; activeUsers: number }>("reporting/summary"),
-      apiRequest<Array<{ id: string; title: string; channel: string; status: string }>>("notifications"),
-      apiRequest<Array<{ id: string; title: string; dueDate: string; status: string }>>("compliance")
+      apiRequest<CompanySummary>("companies/me"),
+      apiRequest<ReportingSummary>("reporting/summary"),
+      apiRequest<NotificationRecord[]>("notifications")
     ])
-      .then(([company, reporting, notifications, compliance]) => setData({ company, reporting, notifications, compliance }))
+      .then(([company, reporting, notifications]) => setData({ company, reporting, notifications }))
       .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Failed to load dashboard."));
   }, []);
 
@@ -88,7 +123,7 @@ export function TenantOverviewPage() {
               { label: "Users", value: data.company?.metrics.users ?? 0 },
               { label: "Jobs", value: data.reporting?.jobs ?? 0 },
               { label: "Completed Jobs", value: data.reporting?.completedJobs ?? 0 },
-              { label: "Open Compliance", value: data.reporting?.openCompliance ?? 0 }
+              { label: "Active Users", value: data.reporting?.activeUsers ?? 0 }
             ].map((metric) => (
               <article key={metric.label} className="panel" style={{ padding: 22 }}>
                 <div className="muted">{metric.label}</div>

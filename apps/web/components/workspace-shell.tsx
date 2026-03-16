@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BriefcaseBusiness, Building2, ClipboardCheck, FileBarChart2, FileText, HardHat, Home, LogOut, Shield, Users, Wrench } from "lucide-react";
+import { Bell, BriefcaseBusiness, Building2, ClipboardCheck, FileBarChart2, FileText, Home, LogOut, Shield, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandLogo } from "./brand-logo";
@@ -13,7 +13,6 @@ const tenantNav = [
   { label: "Forms", href: "/dashboard/forms", icon: ClipboardCheck },
   { label: "Assets", href: "/dashboard/assets", icon: Wrench },
   { label: "Documents", href: "/dashboard/documents", icon: FileText },
-  { label: "Compliance", href: "/dashboard/compliance", icon: HardHat },
   { label: "Notifications", href: "/dashboard/notifications", icon: Bell },
   { label: "Reporting", href: "/dashboard/reporting", icon: FileBarChart2 }
 ];

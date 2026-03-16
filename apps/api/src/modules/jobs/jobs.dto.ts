@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, PartialType } from "@nestjs/swagger";
 import { JOB_STATUS_VALUES } from "@tna-nexus/shared";
 import { IsArray, IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 
@@ -34,3 +34,5 @@ export class CreateJobDto {
   @IsString({ each: true })
   assignedOperativeIds?: string[];
 }
+
+export class UpdateJobDto extends PartialType(CreateJobDto) {}

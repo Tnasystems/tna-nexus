@@ -13,7 +13,6 @@ import { FormsModule } from "./forms/forms.module";
 import { TimesheetsModule } from "./timesheets/timesheets.module";
 import { AssetsModule } from "./assets/assets.module";
 import { DocumentsModule } from "./documents/documents.module";
-import { ComplianceModule } from "./compliance/compliance.module";
 import { ReportingModule } from "./reporting/reporting.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { SearchModule } from "./search/search.module";
@@ -45,7 +44,6 @@ import { DatabaseModule } from "../database/database.module";
     TimesheetsModule,
     AssetsModule,
     DocumentsModule,
-    ComplianceModule,
     ReportingModule,
     NotificationsModule,
     SearchModule,

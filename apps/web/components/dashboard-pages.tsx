@@ -158,6 +158,7 @@ interface TrainingRecord {
   name: string;
   expiresOn: string;
   certificateFileName?: string;
+  certificateDataUrl?: string;
 }
 
 function parseTrainingRecords(value: string | null | undefined) {
@@ -1946,6 +1947,24 @@ export function UserRecordPage({
     setTrainingRecords((current) => current.filter((record) => record.id !== recordId));
   }
 
+  async function handleTrainingFile(recordId: string, file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+    updateTrainingRecord(recordId, {
+      certificateFileName: file.name,
+      certificateDataUrl: dataUrl
+    });
+  }
+
   async function setAccountStatus(status: "ACTIVE" | "SUSPENDED" | "DISABLED") {
     setForm((current) => ({ ...current, accountStatus: status }));
     try {
@@ -2155,6 +2174,10 @@ export function UserRecordPage({
               {activeTab === "information" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
                   <div className="stack">
+                    <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+                    <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
+                    <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
+                    <button className="button" onClick={handleSave} type="button">Save Employee Information</button>
                     {demoProfileRows.map((row) => (
                       <div key={row.label} className="panel" style={{ padding: 16 }}>
                         <div className="muted">{row.label}</div>
@@ -2165,10 +2188,10 @@ export function UserRecordPage({
                   <div className="panel" style={{ padding: 20 }}>
                     <div style={{ fontWeight: 800, marginBottom: 12 }}>Profile summary</div>
                     <div className="stack" style={{ gap: 10 }}>
-                      <div><strong>Name:</strong> {user?.fullName ?? "-"}</div>
-                      <div><strong>Email:</strong> {user?.email ?? "-"}</div>
-                      <div><strong>Role:</strong> {user?.role ?? "-"}</div>
-                      <div><strong>Status:</strong> {user?.accountStatus ?? "ACTIVE"}</div>
+                      <div><strong>Name:</strong> {form.fullName || "-"}</div>
+                      <div><strong>Email:</strong> {form.email || "-"}</div>
+                      <div><strong>Role:</strong> {form.role || "-"}</div>
+                      <div><strong>Status:</strong> {form.accountStatus || "ACTIVE"}</div>
                       <div><strong>Employment started:</strong> 12/01/2024</div>
                     </div>
                   </div>
@@ -2189,13 +2212,23 @@ export function UserRecordPage({
                               <span>Certificate PDF/Image</span>
                               <input
                                 className="input"
-                                onChange={(event) => updateTrainingRecord(record.id, {
-                                  certificateFileName: event.target.files?.[0]?.name ?? record.certificateFileName
-                                })}
+                                onChange={(event) => void handleTrainingFile(record.id, event.target.files?.[0] ?? null)}
                                 type="file"
                               />
                             </label>
                             <div className="muted">{record.certificateFileName ? `Selected: ${record.certificateFileName}` : "No certificate selected."}</div>
+                            {record.certificateDataUrl ? (
+                              <div style={{ display: "grid", gap: 10 }}>
+                                <a className="badge" href={record.certificateDataUrl} rel="noreferrer" target="_blank">Open certificate</a>
+                                {record.certificateDataUrl.startsWith("data:image/") ? (
+                                  <img
+                                    alt={record.certificateFileName ?? record.name}
+                                    src={record.certificateDataUrl}
+                                    style={{ maxWidth: 220, borderRadius: 16, border: "1px solid var(--line)" }}
+                                  />
+                                ) : null}
+                              </div>
+                            ) : null}
                             <div style={{ display: "flex", justifyContent: "flex-end" }}>
                               <button className="button button-subtle" onClick={() => removeTrainingRecord(record.id)} type="button">Remove Record</button>
                             </div>

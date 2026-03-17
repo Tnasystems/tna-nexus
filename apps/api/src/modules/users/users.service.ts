@@ -32,6 +32,7 @@ export class UsersService {
         id: randomUUID(),
         email: dto.email,
         fullName: dto.fullName,
+        phone: dto.phone ?? null,
         role: dto.role,
         accountStatus: dto.accountStatus ?? "ACTIVE",
         trainingRecordsJson: dto.trainingRecordsJson ?? "[]",
@@ -53,6 +54,7 @@ export class UsersService {
       data: {
         email: dto.email ?? undefined,
         fullName: dto.fullName ?? undefined,
+        phone: dto.phone ?? undefined,
         role: dto.role ?? undefined,
         accountStatus: dto.accountStatus ?? undefined,
         trainingRecordsJson: dto.trainingRecordsJson ?? undefined,

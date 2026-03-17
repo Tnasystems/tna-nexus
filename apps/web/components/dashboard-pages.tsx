@@ -85,6 +85,7 @@ interface UserRecord {
   email: string;
   fullName: string;
   role: string;
+  phone?: string | null;
   accountStatus?: string;
   trainingRecordsJson?: string;
 }
@@ -1688,11 +1689,13 @@ export function UsersPage() {
   const [form, setForm] = useState<{
     email: string;
     fullName: string;
+    phone: string;
     role: string;
     password: string;
   }>({
     email: "",
     fullName: "",
+    phone: "",
     role: ROLE_VALUES[1],
     password: ""
   });
@@ -1712,6 +1715,7 @@ export function UsersPage() {
     setForm({
       email: "",
       fullName: "",
+      phone: "",
       role: ROLE_VALUES[1],
       password: ""
     });
@@ -1725,6 +1729,7 @@ export function UsersPage() {
     setForm({
       email: user.email,
       fullName: user.fullName,
+      phone: user.phone ?? "",
       role: user.role,
       password: ""
     });
@@ -1736,6 +1741,7 @@ export function UsersPage() {
       const payload = {
         email: form.email,
         fullName: form.fullName,
+        phone: form.phone,
         role: form.role,
         ...(form.password ? { password: form.password } : {})
       };
@@ -1763,6 +1769,7 @@ export function UsersPage() {
             <form className="stack" onSubmit={handleSubmit}>
               <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
               <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+              <TextField label="Phone" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
               <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
               <TextField
                 label={editingUserId ? "New password (optional)" : "Password"}
@@ -1843,12 +1850,14 @@ export function UserRecordPage({
   const [form, setForm] = useState<{
     email: string;
     fullName: string;
+    phone: string;
     role: string;
     password: string;
     accountStatus: string;
   }>({
     email: "",
     fullName: "",
+    phone: "",
     role: ROLE_VALUES[1],
     password: "",
     accountStatus: "ACTIVE"
@@ -1865,6 +1874,7 @@ export function UserRecordPage({
       setForm({
         email: nextUser.email,
         fullName: nextUser.fullName,
+        phone: nextUser.phone ?? "",
         role: nextUser.role,
         password: "",
         accountStatus: nextUser.accountStatus ?? "ACTIVE"
@@ -1887,6 +1897,7 @@ export function UserRecordPage({
       const payload = {
         email: form.email,
         fullName: form.fullName,
+        phone: form.phone,
         role: form.role,
         accountStatus: form.accountStatus,
         trainingRecordsJson: JSON.stringify(trainingRecords),
@@ -1919,7 +1930,7 @@ export function UserRecordPage({
   }));
 
   const demoProfileRows = [
-    { label: "Mobile", value: user ? `07${user.id.slice(0, 2)} ${user.id.slice(2, 5)} ${user.id.slice(5, 9)}` : "-" },
+    { label: "Mobile", value: form.phone || (user ? `07${user.id.slice(0, 2)} ${user.id.slice(2, 5)} ${user.id.slice(5, 9)}` : "-") },
     { label: "Depot", value: user?.role === "OPERATIVE" ? "Midlands Depot" : "Head Office" },
     { label: "Manager", value: user?.role === "OPERATIVE" ? "Marcus Cole" : "Alicia Warren" },
     { label: "Employment", value: user?.role === "OPERATIVE" ? "Full-time field operative" : "Management" }
@@ -2176,6 +2187,7 @@ export function UserRecordPage({
                   <div className="stack">
                     <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
                     <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
+                    <TextField label="Phone number" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
                     <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
                     <button className="button" onClick={handleSave} type="button">Save Employee Information</button>
                     {demoProfileRows.map((row) => (
@@ -2190,6 +2202,7 @@ export function UserRecordPage({
                     <div className="stack" style={{ gap: 10 }}>
                       <div><strong>Name:</strong> {form.fullName || "-"}</div>
                       <div><strong>Email:</strong> {form.email || "-"}</div>
+                      <div><strong>Phone:</strong> {form.phone || "-"}</div>
                       <div><strong>Role:</strong> {form.role || "-"}</div>
                       <div><strong>Status:</strong> {form.accountStatus || "ACTIVE"}</div>
                       <div><strong>Employment started:</strong> 12/01/2024</div>
@@ -2251,6 +2264,7 @@ export function UserRecordPage({
                   <div className="stack">
                     <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
                     <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+                    <TextField label="Phone number" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
                     <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
                     <SelectField label="Account status" onChange={(value) => setForm((current) => ({ ...current, accountStatus: value }))} options={["ACTIVE", "SUSPENDED", "DISABLED"]} value={form.accountStatus} />
                     <TextField label="New password (optional)" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />

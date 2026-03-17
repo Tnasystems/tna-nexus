@@ -13,6 +13,11 @@ export class CreateUserDto {
   @IsString()
   fullName!: string;
 
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
   @ApiProperty({ enum: ROLE_VALUES })
   @IsIn(ROLE_VALUES)
   role!: string;
@@ -43,6 +48,11 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsString()
   override fullName?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  override phone?: string;
 
   @ApiProperty({ enum: ROLE_VALUES, required: false })
   @IsOptional()

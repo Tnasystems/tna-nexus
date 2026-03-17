@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
 import type { JwtUser } from "@tna-nexus/shared";
@@ -11,7 +11,19 @@ export class UsersService {
 
   async list(user: JwtUser) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    return prisma.user.findMany({ orderBy: { createdAt: "desc" } });
+    if (this.isManager(user)) {
+      return prisma.user.findMany({ orderBy: { createdAt: "desc" } });
+    }
+
+    const jobs = await prisma.job.findMany({
+      where: { assignedOperativeIds: { has: user.sub } }
+    });
+    const visibleIds = [...new Set([user.sub, ...jobs.flatMap((job) => job.assignedOperativeIds)])];
+
+    return prisma.user.findMany({
+      where: { id: { in: visibleIds } },
+      orderBy: { fullName: "asc" }
+    });
   }
 
   async get(user: JwtUser, userId: string) {
@@ -22,10 +34,24 @@ export class UsersService {
       throw new NotFoundException("User not found.");
     }
 
+    if (!this.isManager(user) && userId !== user.sub) {
+      const sharedJob = await prisma.job.findFirst({
+        where: {
+          assignedOperativeIds: { has: user.sub },
+          AND: { assignedOperativeIds: { has: userId } }
+        }
+      });
+
+      if (!sharedJob) {
+        throw new ForbiddenException("You do not have access to this employee.");
+      }
+    }
+
     return existing;
   }
 
   async create(user: JwtUser, dto: CreateUserDto) {
+    this.ensureManager(user);
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     return prisma.user.create({
       data: {
@@ -42,6 +68,7 @@ export class UsersService {
   }
 
   async update(user: JwtUser, userId: string, dto: UpdateUserDto) {
+    this.ensureManager(user);
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     const existing = await prisma.user.findUnique({ where: { id: userId } });
 
@@ -61,5 +88,15 @@ export class UsersService {
         passwordHash: dto.password ? await argon2.hash(dto.password) : undefined
       }
     });
+  }
+
+  private isManager(user: JwtUser) {
+    return user.role === "PLATFORM_ADMIN" || user.role === "DIRECTOR" || user.role === "MANAGER";
+  }
+
+  private ensureManager(user: JwtUser) {
+    if (!this.isManager(user)) {
+      throw new ForbiddenException("You do not have permission to modify employees.");
+    }
   }
 }

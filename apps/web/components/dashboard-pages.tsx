@@ -109,6 +109,10 @@ interface JobRecord {
 
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
 
+function canManageWorkspace(role: string) {
+  return MANAGER_ROLES.has(role);
+}
+
 function toDateKey(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 }
@@ -879,8 +883,11 @@ export function JobsPage() {
 
   return (
     <ProtectedWorkspace allow="tenant" description="Create and track operational jobs across sites." title="Jobs">
-      {() => (
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        return (
         <PanelGrid>
+          {canManage ? (
           <article className="panel" style={{ padding: 24 }}>
             <h2 style={{ marginTop: 0 }}>{editingJobId ? "Edit job" : "Create job"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
@@ -974,6 +981,13 @@ export function JobsPage() {
             </form>
             <ErrorText error={error} />
           </article>
+          ) : (
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>My assigned jobs</h2>
+            <p className="muted" style={{ margin: 0 }}>You can view the jobs assigned to you and who you are working with, but only managers can create or edit jobs.</p>
+            <ErrorText error={error} />
+          </article>
+          )}
           <article className="panel" style={{ padding: 24 }}>
             <h2 style={{ marginTop: 0 }}>Job board</h2>
             <div className="stack">
@@ -981,8 +995,8 @@ export function JobsPage() {
                 <div key={job.id} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
                     <div style={{ fontWeight: 700 }}>{job.title}</div>
-                    <Link className="button button-subtle" href={jobDetailHref(job.id)}>
-                      Open
+                    <Link className="button button-subtle" href={jobDetailHref(job.id, canManage ? "details" : "schedule")}>
+                      {canManage ? "Open" : "View"}
                     </Link>
                   </div>
                   <div className="muted">
@@ -1007,7 +1021,7 @@ export function JobsPage() {
             </div>
           </article>
         </PanelGrid>
-      )}
+      )}}
     </ProtectedWorkspace>
   );
 }
@@ -1241,7 +1255,9 @@ export function JobRecordPage({
 
   return (
     <ProtectedWorkspace allow="tenant" description="Review a single job record and manage its scheduling." title={job ? job.title : "Job Record"}>
-      {() => (
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        return (
         <div className="stack">
           <ErrorText error={error} />
           {success ? <div className="panel" style={{ padding: 18, borderRadius: 18 }}>{success}</div> : null}
@@ -1266,14 +1282,26 @@ export function JobRecordPage({
               {activeTab === "details" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
                   <div className="stack">
-                    <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
-                      <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
-                    </div>
-                    <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
-                    <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
-                    <button className="button" onClick={handleSave} type="button">Save Job</button>
+                    {canManage ? (
+                      <>
+                        <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
+                          <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
+                        </div>
+                        <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
+                        <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
+                        <button className="button" onClick={handleSave} type="button">Save Job</button>
+                      </>
+                    ) : (
+                      <div className="stack">
+                        <div className="panel" style={{ padding: 16 }}><div className="muted">Title</div><div style={{ fontWeight: 700 }}>{form.title}</div></div>
+                        <div className="panel" style={{ padding: 16 }}><div className="muted">Company job number</div><div style={{ fontWeight: 700 }}>{form.companyJobNumber}</div></div>
+                        <div className="panel" style={{ padding: 16 }}><div className="muted">Customer job number</div><div style={{ fontWeight: 700 }}>{form.customerJobNumber}</div></div>
+                        <div className="panel" style={{ padding: 16 }}><div className="muted">Site address</div><div style={{ fontWeight: 700 }}>{form.siteAddress}</div></div>
+                        <div className="panel" style={{ padding: 16 }}><div className="muted">Status</div><div style={{ fontWeight: 700 }}>{form.status}</div></div>
+                      </div>
+                    )}
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
                     <div className="stack">
@@ -1297,12 +1325,15 @@ export function JobRecordPage({
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
                   <div className="stack">
+                    {canManage ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                       <TextField label="Working start time" onChange={(value) => setForm((current) => ({ ...current, scheduledStartTime: value }))} type="time" value={form.scheduledStartTime} />
                       <TextField label="Working finish time" onChange={(value) => setForm((current) => ({ ...current, scheduledEndTime: value }))} type="time" value={form.scheduledEndTime} />
                     </div>
+                    ) : null}
                     <div className="field">
                       <span>Schedule range</span>
+                      {canManage ? (
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
                         <label className="field" style={{ flex: "1 1 220px" }}>
                           <span>Preferred start</span>
@@ -1314,6 +1345,15 @@ export function JobRecordPage({
                         </label>
                         <button className="button button-subtle" onClick={applyDateRange} type="button">Apply Range</button>
                       </div>
+                      ) : (
+                      <div className="panel" style={{ padding: 16 }}>
+                        <div style={{ fontWeight: 700 }}>
+                          {form.scheduledDays.length > 0
+                            ? `${new Date(`${form.scheduledDays[0]}T00:00:00`).toLocaleDateString()} - ${new Date(`${form.scheduledDays[form.scheduledDays.length - 1]}T00:00:00`).toLocaleDateString()}`
+                            : "Not scheduled"}
+                        </div>
+                      </div>
+                      )}
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                         {form.scheduledDays.map((day) => (
                           <div key={day} className="assignment-pill">
@@ -1325,6 +1365,7 @@ export function JobRecordPage({
                     </div>
                     <div className="field">
                       <span>Assigned to</span>
+                      {canManage ? (
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
                         <label className="field" style={{ flex: "1 1 260px" }}>
                           <span>Select operative</span>
@@ -1337,6 +1378,7 @@ export function JobRecordPage({
                         </label>
                         <button className="button button-subtle" onClick={addOperative} type="button">Assign Across Job</button>
                       </div>
+                      ) : null}
                       {overlapWarnings.length > 0 ? (
                         <div className="error-banner">
                           {overlapWarnings.map((warning) => (
@@ -1355,7 +1397,7 @@ export function JobRecordPage({
                               {(form.dailyAssignments[day] ?? []).map((userId) => (
                                 <div key={`${day}-${userId}`} className="assignment-pill">
                                   <span>{usersById.get(userId)?.fullName ?? userId}</span>
-                                  <button className="assignment-pill-remove" onClick={() => removeOperative(day, userId)} type="button">Remove</button>
+                                  {canManage ? <button className="assignment-pill-remove" onClick={() => removeOperative(day, userId)} type="button">Remove</button> : null}
                                 </div>
                               ))}
                             </div>
@@ -1363,7 +1405,7 @@ export function JobRecordPage({
                         ))}
                       </div>
                     </div>
-                    <button className="button" onClick={handleSave} type="button">Save Schedule</button>
+                    {canManage ? <button className="button" onClick={handleSave} type="button">Save Schedule</button> : null}
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
                     <div className="stack">
@@ -1401,7 +1443,7 @@ export function JobRecordPage({
             </div>
           </div>
         </div>
-      )}
+      )}}
     </ProtectedWorkspace>
   );
 }
@@ -1755,15 +1797,21 @@ export function UsersPage() {
 
   return (
     <ProtectedWorkspace allow="tenant" description="Manage company users and role access." title="Team">
-      {() => (
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        return (
         <div className="stack">
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <div className="muted">Current employees and their readiness status.</div>
-            <button className="button" onClick={() => setShowCreate((current) => !current)} type="button">
-              {showCreate ? "Close Create User" : "Create User"}
-            </button>
+            <div className="muted">
+              {canManage ? "Current employees and their readiness status." : "People you are scheduled to work with."}
+            </div>
+            {canManage ? (
+              <button className="button" onClick={() => setShowCreate((current) => !current)} type="button">
+                {showCreate ? "Close Create User" : "Create User"}
+              </button>
+            ) : null}
           </div>
-          {showCreate ? (
+          {showCreate && canManage ? (
             <article className="panel" style={{ padding: 24 }}>
             <h2 style={{ marginTop: 0 }}>{editingUserId ? "Edit user" : "Create user"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
@@ -1816,14 +1864,14 @@ export function UsersPage() {
                       ? "Expired Training"
                       : getTrainingState(user) === "warning"
                         ? "Training Warning"
-                        : "Open"}
+                        : canManage ? "Open" : "View"}
                   </span>
                 </Link>
               ))}
             </div>
           </article>
         </div>
-      )}
+      )}}
     </ProtectedWorkspace>
   );
 }
@@ -1995,7 +2043,9 @@ export function UserRecordPage({
 
   return (
     <ProtectedWorkspace allow="tenant" description="Review a team member, their schedule, training, and account settings." title={user ? user.fullName : "Team Member"}>
-      {() => (
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        return (
         <div className="stack">
           <ErrorText error={error} />
           {success ? <div className="panel" style={{ padding: 18, borderRadius: 18 }}>{success}</div> : null}
@@ -2185,11 +2235,15 @@ export function UserRecordPage({
               {activeTab === "information" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
                   <div className="stack">
-                    <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
-                    <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
-                    <TextField label="Phone number" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
-                    <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
-                    <button className="button" onClick={handleSave} type="button">Save Employee Information</button>
+                    {canManage ? (
+                      <>
+                        <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+                        <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
+                        <TextField label="Phone number" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
+                        <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
+                        <button className="button" onClick={handleSave} type="button">Save Employee Information</button>
+                      </>
+                    ) : null}
                     {demoProfileRows.map((row) => (
                       <div key={row.label} className="panel" style={{ padding: 16 }}>
                         <div className="muted">{row.label}</div>
@@ -2219,16 +2273,25 @@ export function UserRecordPage({
                       {trainingRecords.map((record) => (
                         <div key={record.id} className="panel" style={{ padding: 14 }}>
                           <div style={{ display: "grid", gap: 12 }}>
-                            <TextField label="Training name" onChange={(value) => updateTrainingRecord(record.id, { name: value })} value={record.name} />
-                            <TextField label="Expiry date" onChange={(value) => updateTrainingRecord(record.id, { expiresOn: value })} type="date" value={record.expiresOn} />
-                            <label className="field">
-                              <span>Certificate PDF/Image</span>
-                              <input
-                                className="input"
-                                onChange={(event) => void handleTrainingFile(record.id, event.target.files?.[0] ?? null)}
-                                type="file"
-                              />
-                            </label>
+                            {canManage ? (
+                              <>
+                                <TextField label="Training name" onChange={(value) => updateTrainingRecord(record.id, { name: value })} value={record.name} />
+                                <TextField label="Expiry date" onChange={(value) => updateTrainingRecord(record.id, { expiresOn: value })} type="date" value={record.expiresOn} />
+                                <label className="field">
+                                  <span>Certificate PDF/Image</span>
+                                  <input
+                                    className="input"
+                                    onChange={(event) => void handleTrainingFile(record.id, event.target.files?.[0] ?? null)}
+                                    type="file"
+                                  />
+                                </label>
+                              </>
+                            ) : (
+                              <>
+                                <div><strong>{record.name}</strong></div>
+                                <div className="muted">Expiry: {record.expiresOn || "Not set"}</div>
+                              </>
+                            )}
                             <div className="muted">{record.certificateFileName ? `Selected: ${record.certificateFileName}` : "No certificate selected."}</div>
                             {record.certificateDataUrl ? (
                               <div style={{ display: "grid", gap: 10 }}>
@@ -2242,14 +2305,16 @@ export function UserRecordPage({
                                 ) : null}
                               </div>
                             ) : null}
-                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                              <button className="button button-subtle" onClick={() => removeTrainingRecord(record.id)} type="button">Remove Record</button>
-                            </div>
+                            {canManage ? (
+                              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <button className="button button-subtle" onClick={() => removeTrainingRecord(record.id)} type="button">Remove Record</button>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ))}
-                      <button className="button button-subtle" onClick={addTrainingRecord} type="button">Add Training Record</button>
-                      <button className="button" onClick={handleSave} type="button">Save Training</button>
+                      {canManage ? <button className="button button-subtle" onClick={addTrainingRecord} type="button">Add Training Record</button> : null}
+                      {canManage ? <button className="button" onClick={handleSave} type="button">Save Training</button> : null}
                     </div>
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
@@ -2262,18 +2327,24 @@ export function UserRecordPage({
               {activeTab === "settings" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
                   <div className="stack">
-                    <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
-                    <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
-                    <TextField label="Phone number" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
-                    <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
-                    <SelectField label="Account status" onChange={(value) => setForm((current) => ({ ...current, accountStatus: value }))} options={["ACTIVE", "SUSPENDED", "DISABLED"]} value={form.accountStatus} />
-                    <TextField label="New password (optional)" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />
-                    <button className="button" onClick={handleSave} type="button">Save Settings</button>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button className="button button-subtle" onClick={() => void setAccountStatus("SUSPENDED")} type="button">Suspend Account</button>
-                      <button className="button button-danger" onClick={() => void setAccountStatus("DISABLED")} type="button">Deactivate Account</button>
-                      <button className="button" onClick={() => void setAccountStatus("ACTIVE")} type="button">Enable Account</button>
-                    </div>
+                    {canManage ? (
+                      <>
+                        <TextField label="Email" onChange={(value) => setForm((current) => ({ ...current, email: value }))} type="email" value={form.email} />
+                        <TextField label="Full name" onChange={(value) => setForm((current) => ({ ...current, fullName: value }))} value={form.fullName} />
+                        <TextField label="Phone number" onChange={(value) => setForm((current) => ({ ...current, phone: value }))} value={form.phone} />
+                        <SelectField label="Role" onChange={(value) => setForm((current) => ({ ...current, role: value }))} options={[...ROLE_VALUES]} value={form.role} />
+                        <SelectField label="Account status" onChange={(value) => setForm((current) => ({ ...current, accountStatus: value }))} options={["ACTIVE", "SUSPENDED", "DISABLED"]} value={form.accountStatus} />
+                        <TextField label="New password (optional)" onChange={(value) => setForm((current) => ({ ...current, password: value }))} type="password" value={form.password} />
+                        <button className="button" onClick={handleSave} type="button">Save Settings</button>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button className="button button-subtle" onClick={() => void setAccountStatus("SUSPENDED")} type="button">Suspend Account</button>
+                          <button className="button button-danger" onClick={() => void setAccountStatus("DISABLED")} type="button">Deactivate Account</button>
+                          <button className="button" onClick={() => void setAccountStatus("ACTIVE")} type="button">Enable Account</button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="callout">Only managers can change employee settings.</div>
+                    )}
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
                     <div style={{ fontWeight: 800, marginBottom: 12 }}>Account notes</div>
@@ -2287,7 +2358,7 @@ export function UserRecordPage({
             </div>
           </div>
         </div>
-      )}
+      )}}
     </ProtectedWorkspace>
   );
 }

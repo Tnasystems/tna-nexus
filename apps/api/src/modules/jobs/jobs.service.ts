@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { JwtUser } from "@tna-nexus/shared";
 import { TenantAccessService } from "../../auth/tenant-access.service";
@@ -10,7 +10,11 @@ export class JobsService {
 
   async list(user: JwtUser) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    return prisma.job.findMany({ include: { tasks: true }, orderBy: { createdAt: "desc" } });
+    return prisma.job.findMany({
+      where: this.isManager(user) ? undefined : { assignedOperativeIds: { has: user.sub } },
+      include: { tasks: true },
+      orderBy: { createdAt: "desc" }
+    });
   }
 
   async get(user: JwtUser, jobId: string) {
@@ -24,10 +28,15 @@ export class JobsService {
       throw new NotFoundException("Job not found.");
     }
 
+    if (!this.isManager(user) && !job.assignedOperativeIds.includes(user.sub)) {
+      throw new ForbiddenException("You do not have access to this job.");
+    }
+
     return job;
   }
 
   async create(user: JwtUser, dto: CreateJobDto) {
+    this.ensureManager(user);
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.buildScheduling(dto);
     return prisma.job.create({
@@ -50,6 +59,7 @@ export class JobsService {
   }
 
   async update(user: JwtUser, jobId: string, dto: UpdateJobDto) {
+    this.ensureManager(user);
     const { prisma } = await this.tenantAccess.getTenantContext(user);
     const existing = await prisma.job.findUnique({ where: { id: jobId } });
 
@@ -225,6 +235,16 @@ export class JobsService {
     }
 
     return Object.fromEntries(scheduledDays.map((day) => [day, fallbackUsers])) as Record<string, string[]>;
+  }
+
+  private isManager(user: JwtUser) {
+    return user.role === "PLATFORM_ADMIN" || user.role === "DIRECTOR" || user.role === "MANAGER";
+  }
+
+  private ensureManager(user: JwtUser) {
+    if (!this.isManager(user)) {
+      throw new ForbiddenException("You do not have permission to modify jobs.");
+    }
   }
 
 }

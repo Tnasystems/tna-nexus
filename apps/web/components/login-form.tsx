@@ -10,7 +10,6 @@ export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [tenantSlug, setTenantSlug] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,11 +19,12 @@ export function LoginForm() {
     setError(null);
 
     try {
-      await login({
-        email,
-        password,
-        tenantSlug: tenantSlug.trim() || undefined
-      });
+      const session = await login({ email, password });
+      const redirectTo = session.user.role === "PLATFORM_ADMIN"
+        ? "/dashboard/admin"
+        : (typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("redirect") || "/dashboard"
+          : "/dashboard");
 
       const redirectTo = typeof window !== "undefined"
         ? new URLSearchParams(window.location.search).get("redirect") || "/dashboard"
@@ -51,16 +51,16 @@ export function LoginForm() {
             TNA-Nexus
           </h1>
           <p className="muted" style={{ margin: 0, fontSize: 17, lineHeight: 1.6 }}>
-            Use your platform admin credentials, or add a tenant slug to sign into a company workspace.
+            Use your platform admin or company credentials. The system routes company users automatically.
           </p>
           <div className="stack">
             <div className="callout">
               <ShieldCheck size={18} />
-              <span>Leave tenant slug blank for platform admin access.</span>
+              <span>Platform admins go straight to the control workspace after sign in.</span>
             </div>
             <div className="callout">
               <LockKeyhole size={18} />
-              <span>Tenant users should enter the company slug created during provisioning.</span>
+              <span>Company users are matched to the correct tenant database by their email address.</span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -107,17 +107,6 @@ export function LoginForm() {
                 required
                 type="password"
                 value={password}
-              />
-            </label>
-
-            <label className="field">
-              <span>Tenant slug</span>
-              <input
-                className="input"
-                onChange={(event) => setTenantSlug(event.target.value)}
-                placeholder="demo-industrial"
-                type="text"
-                value={tenantSlug}
               />
             </label>
 

@@ -22,4 +22,14 @@ export class TenantPrismaFactory {
     this.cache.set(databaseUrl, client);
     return client;
   }
+
+  async resetClient(databaseUrl: string) {
+    const cached = this.cache.get(databaseUrl);
+    if (!cached) {
+      return;
+    }
+
+    this.cache.delete(databaseUrl);
+    await cached.$disconnect().catch(() => undefined);
+  }
 }

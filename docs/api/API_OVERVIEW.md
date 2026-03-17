@@ -15,6 +15,7 @@ Tenant-scoped operations:
 - `GET /companies/me`
 - `GET/POST /users`
 - `GET/POST /jobs`
+- `PATCH /jobs/:jobId`
 - `GET/POST /tasks`
 - `GET/POST /forms/definitions`
 - `GET /timesheets`
@@ -23,7 +24,6 @@ Tenant-scoped operations:
 - `GET/POST /assets`
 - `GET /documents`
 - `POST /documents/placeholder`
-- `GET/POST /compliance`
 - `GET /reporting/summary`
 - `GET/POST /notifications`
 - `GET /search`

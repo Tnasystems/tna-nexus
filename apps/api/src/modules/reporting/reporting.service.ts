@@ -8,17 +8,17 @@ export class ReportingService {
 
   async summary(user: JwtUser) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    const [jobs, completedJobs, openCompliance, activeUsers] = await prisma.$transaction([
+    const [jobs, completedJobs, scheduledJobs, activeUsers] = await prisma.$transaction([
       prisma.job.count(),
       prisma.job.count({ where: { status: "COMPLETED" } }),
-      prisma.complianceRecord.count({ where: { status: "OPEN" } }),
+      prisma.job.count({ where: { status: "SCHEDULED" } }),
       prisma.user.count()
     ]);
 
     return {
       jobs,
       completedJobs,
-      openCompliance,
+      scheduledJobs,
       activeUsers
     };
   }

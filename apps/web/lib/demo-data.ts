@@ -2,7 +2,7 @@ export const overviewMetrics = [
   { label: "Open Jobs", value: "128", trend: "+8%" },
   { label: "Field Staff", value: "42", trend: "+3" },
   { label: "Forms Today", value: "311", trend: "+22%" },
-  { label: "Compliance Due", value: "9", trend: "-4" }
+  { label: "Scheduled Jobs", value: "54", trend: "+6" }
 ];
 
 export const jobs = [
@@ -12,9 +12,9 @@ export const jobs = [
 ];
 
 export const staff = [
-  { name: "Amy Reeves", role: "Supervisor", state: "On site" },
-  { name: "Sanjay Patel", role: "Field Tech", state: "Travelling" },
-  { name: "Chris Moore", role: "Field Tech", state: "Clocked out" }
+  { name: "Amy Reeves", role: "Manager", state: "On site" },
+  { name: "Sanjay Patel", role: "Operative", state: "Travelling" },
+  { name: "Chris Moore", role: "Operative", state: "Clocked out" }
 ];
 
 export const forms = [
@@ -29,14 +29,8 @@ export const documents = [
   { name: "Service Completion Pack", type: "Handover", status: "Issued" }
 ];
 
-export const compliance = [
-  { title: "Fleet checks due this week", status: "3 due", priority: "High" },
-  { title: "Missing RAMS sign-offs", status: "2 open", priority: "Medium" },
-  { title: "Training renewals", status: "6 upcoming", priority: "Planned" }
-];
-
 export const notifications = [
   { title: "Stock delay for Leeds depot", channel: "Ops", time: "14 min ago" },
   { title: "Boiler room inspection completed", channel: "Field", time: "32 min ago" },
-  { title: "New compliance reminder batch sent", channel: "Automation", time: "1 hr ago" }
+  { title: "New scheduler batch sent", channel: "Automation", time: "1 hr ago" }
 ];

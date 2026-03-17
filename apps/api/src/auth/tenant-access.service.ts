@@ -30,15 +30,28 @@ export class TenantAccessService {
       where: { id: user.companyId }
     });
 
+    if (company.status === "SUSPENDED") {
+      throw new ForbiddenException("This company is suspended.");
+    }
+
+    const prisma = this.tenantFactory.getClient(
+      this.toDatabaseUrl(
+        metadata.databaseName,
+        metadata.databaseUser,
+        this.secretCipher.decrypt(metadata.databasePasswordEncrypted ?? "")
+      )
+    );
+    if (user.role !== "PLATFORM_ADMIN") {
+      const currentUser = await prisma.user.findUnique({ where: { id: user.sub } });
+
+      if (!currentUser || currentUser.accountStatus !== "ACTIVE") {
+        throw new ForbiddenException("This user account is disabled.");
+      }
+    }
+
     return {
       company,
-      prisma: this.tenantFactory.getClient(
-        this.toDatabaseUrl(
-          metadata.databaseName,
-          metadata.databaseUser,
-          this.secretCipher.decrypt(metadata.databasePasswordEncrypted ?? "")
-        )
-      )
+      prisma
     };
   }
 
@@ -47,6 +60,10 @@ export class TenantAccessService {
     const company = await this.platformPrisma.company.findUniqueOrThrow({
       where: { id: metadata.companyId }
     });
+
+    if (company.status === "SUSPENDED") {
+      throw new ForbiddenException("This company is suspended.");
+    }
 
     return {
       company,

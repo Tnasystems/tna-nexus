@@ -3,21 +3,46 @@ CREATE TABLE IF NOT EXISTS "User" (
   "email" TEXT NOT NULL UNIQUE,
   "fullName" TEXT NOT NULL,
   "role" TEXT NOT NULL,
+  "accountStatus" TEXT NOT NULL DEFAULT 'ACTIVE',
+  "trainingRecordsJson" TEXT NOT NULL DEFAULT '[]',
   "passwordHash" TEXT NOT NULL,
   "phone" TEXT,
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "accountStatus" TEXT NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "trainingRecordsJson" TEXT NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS "Job" (
   "id" TEXT PRIMARY KEY,
   "title" TEXT NOT NULL,
+  "companyJobNumber" TEXT NOT NULL,
+  "customerJobNumber" TEXT NOT NULL,
   "siteAddress" TEXT NOT NULL,
   "status" TEXT NOT NULL,
   "scheduledFor" TIMESTAMP,
+  "scheduledTo" TIMESTAMP,
+  "scheduledStartTime" TEXT,
+  "scheduledEndTime" TEXT,
+  "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "dailyAssignmentsJson" TEXT NOT NULL DEFAULT '{}',
+  "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "companyJobNumber" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "customerJobNumber" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledTo" TIMESTAMP;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledStartTime" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledEndTime" TEXT;
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "dailyAssignmentsJson" TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+UPDATE "Job" SET "companyJobNumber" = COALESCE("companyJobNumber", "id") WHERE "companyJobNumber" IS NULL;
+UPDATE "Job" SET "customerJobNumber" = COALESCE("customerJobNumber", "id") WHERE "customerJobNumber" IS NULL;
+ALTER TABLE "Job" ALTER COLUMN "companyJobNumber" SET NOT NULL;
+ALTER TABLE "Job" ALTER COLUMN "customerJobNumber" SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "Task" (
   "id" TEXT PRIMARY KEY,
@@ -55,14 +80,6 @@ CREATE TABLE IF NOT EXISTS "Document" (
   "name" TEXT NOT NULL,
   "storagePath" TEXT NOT NULL,
   "mimeType" TEXT NOT NULL,
-  "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS "ComplianceRecord" (
-  "id" TEXT PRIMARY KEY,
-  "title" TEXT NOT NULL,
-  "dueDate" TIMESTAMP NOT NULL,
-  "status" TEXT NOT NULL,
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

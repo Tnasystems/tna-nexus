@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { JwtUser } from "@tna-nexus/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
-import { CreateJobDto } from "./jobs.dto";
+import { CreateJobDto, UpdateJobDto } from "./jobs.dto";
 import { JobsService } from "./jobs.service";
 
 @ApiTags("jobs")
@@ -18,8 +18,18 @@ export class JobsController {
     return this.service.list(user);
   }
 
+  @Get(":jobId")
+  get(@CurrentUser() user: JwtUser, @Param("jobId") jobId: string) {
+    return this.service.get(user, jobId);
+  }
+
   @Post()
   create(@CurrentUser() user: JwtUser, @Body() body: CreateJobDto) {
     return this.service.create(user, body);
+  }
+
+  @Patch(":jobId")
+  update(@CurrentUser() user: JwtUser, @Param("jobId") jobId: string, @Body() body: UpdateJobDto) {
+    return this.service.update(user, jobId, body);
   }
 }

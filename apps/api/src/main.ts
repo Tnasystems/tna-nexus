@@ -12,7 +12,10 @@ import { AppModule } from "./modules/app.module";
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true })
+    new FastifyAdapter({
+      logger: true,
+      bodyLimit: 15 * 1024 * 1024
+    })
   );
   const config = app.get(ConfigService);
 

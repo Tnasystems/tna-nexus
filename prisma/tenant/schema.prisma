@@ -13,6 +13,8 @@ model User {
   email          String           @unique
   fullName       String
   role           String
+  accountStatus  String           @default("ACTIVE")
+  trainingRecordsJson String      @default("[]")
   passwordHash   String
   phone          String?
   createdAt      DateTime         @default(now())
@@ -21,14 +23,22 @@ model User {
 }
 
 model Job {
-  id           String   @id
-  title        String
-  siteAddress  String
-  status       String
-  scheduledFor DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tasks        Task[]
+  id                  String   @id
+  title               String
+  companyJobNumber    String
+  customerJobNumber   String
+  siteAddress         String
+  status              String
+  scheduledFor        DateTime?
+  scheduledTo         DateTime?
+  scheduledStartTime  String?
+  scheduledEndTime    String?
+  scheduledDays       String[]
+  dailyAssignmentsJson String   @default("{}")
+  assignedOperativeIds String[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  tasks               Task[]
 }
 
 model Task {
@@ -70,14 +80,6 @@ model Document {
   storagePath String
   mimeType    String
   createdAt   DateTime @default(now())
-}
-
-model ComplianceRecord {
-  id        String   @id
-  title     String
-  dueDate   DateTime
-  status    String
-  createdAt DateTime @default(now())
 }
 
 model Notification {

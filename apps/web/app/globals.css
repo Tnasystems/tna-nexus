@@ -133,6 +133,11 @@ main {
   color: var(--text);
 }
 
+.button-danger {
+  background: linear-gradient(135deg, #c9314b 0%, #fb7185 100%);
+  color: #fff;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -164,11 +169,17 @@ main {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   padding: 14px 16px;
   outline: none;
   font: inherit;
+}
+
+select.input,
+option {
+  color: var(--text);
+  background: var(--panel-strong);
 }
 
 .input::placeholder {
@@ -188,6 +199,299 @@ main {
   color: #ffd7de;
 }
 
+.calendar-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.calendar-weekday {
+  padding: 10px 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.calendar-day {
+  min-height: 170px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.calendar-day-empty {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.35;
+}
+
+.calendar-day-number {
+  font-weight: 800;
+}
+
+.calendar-day-content {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-entry {
+  border-radius: 12px;
+  background: var(--accent-soft);
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.calendar-entry-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.calendar-entry-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.calendar-empty-text {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.schedule-board-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.schedule-board {
+  display: grid;
+  grid-template-columns: 220px repeat(7, minmax(120px, 1fr));
+  min-width: 1060px;
+}
+
+.schedule-board-corner,
+.schedule-board-header,
+.schedule-board-user,
+.schedule-board-cell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.schedule-board-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 14px 16px;
+  background: rgba(19, 37, 58, 0.98);
+}
+
+.schedule-board-header {
+  min-height: 72px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.schedule-board-header-weekend {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.schedule-board-user {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-height: 92px;
+  padding: 14px 16px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  background: rgba(52, 211, 153, 0.14);
+}
+
+.schedule-board-user-name {
+  font-weight: 800;
+}
+
+.schedule-board-user-role {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.schedule-board-cell {
+  min-height: 92px;
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.schedule-board-cell-weekend {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0.04) 6px,
+      rgba(255, 255, 255, 0.015) 6px,
+      rgba(255, 255, 255, 0.015) 12px
+    );
+}
+
+.schedule-board-empty {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 22px;
+}
+
+.schedule-job-chip {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid;
+  border-radius: 10px;
+  min-height: 44px;
+}
+
+.schedule-job-chip-code {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.schedule-job-chip-title {
+  font-size: 11px;
+  line-height: 1.15;
+  opacity: 0.95;
+}
+
+.jobs-board-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.jobs-board {
+  display: grid;
+  min-width: 100%;
+}
+
+.jobs-board-corner,
+.jobs-board-header,
+.jobs-board-job,
+.jobs-board-cell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.jobs-board-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 10px 12px;
+  background: rgba(19, 37, 58, 0.98);
+}
+
+.jobs-board-header {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.jobs-board-header-weekend {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.jobs-board-job {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-height: 42px;
+  padding: 8px 10px;
+  display: grid;
+  align-content: center;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.jobs-board-job-code {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.jobs-board-job-title {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.1;
+}
+
+.jobs-board-cell {
+  min-height: 42px;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.jobs-board-cell-weekend {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.035),
+      rgba(255, 255, 255, 0.035) 6px,
+      rgba(255, 255, 255, 0.015) 6px,
+      rgba(255, 255, 255, 0.015) 12px
+    );
+}
+
+.jobs-board-chip {
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 3px;
+  border: 1px solid;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  overflow: hidden;
+}
+
+.assignment-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.assignment-pill-remove {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;
@@ -200,6 +504,10 @@ main {
   .auth-grid {
     grid-template-columns: 1fr;
   }
+
+  .calendar-month {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -208,6 +516,10 @@ main {
   }
 
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-month {
     grid-template-columns: 1fr;
   }
 }

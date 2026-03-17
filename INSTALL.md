@@ -6,7 +6,7 @@ From a fresh Ubuntu Server:
 sudo apt update && sudo apt install -y git
 git clone https://github.com/Tnasystems/tna-nexus.git
 cd tna-nexus
-DOMAIN=your-domain.com ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeThisNow123!' bash packages/config/scripts/install-ubuntu.sh
+DOMAIN=tnasystems.ddns.net ADMIN_EMAIL=admin@your-domain.com ADMIN_PASSWORD='ChangeThisNow123!' bash packages/config/scripts/install-ubuntu.sh
 ```
 
 Optional:

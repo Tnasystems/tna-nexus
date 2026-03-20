@@ -83,18 +83,26 @@ export class JobsService {
         customerJobNumber: dto.customerJobNumber ?? undefined,
         siteAddress: dto.siteAddress ?? undefined,
         status: dto.status ?? undefined,
-        scheduledFor: dto.scheduledDays === undefined && dto.scheduledFor === undefined
+        scheduledFor: (dto.status === "CANCELLED")
+          ? null
+          : dto.scheduledDays === undefined && dto.scheduledFor === undefined
           ? undefined
           : this.toDateBoundary(dto.scheduledFor, scheduling.scheduledDays[0], "start"),
-        scheduledTo: dto.scheduledDays === undefined && dto.scheduledTo === undefined
+        scheduledTo: (dto.status === "CANCELLED")
+          ? null
+          : dto.scheduledDays === undefined && dto.scheduledTo === undefined
           ? undefined
           : this.toDateBoundary(dto.scheduledTo, scheduling.scheduledDays[scheduling.scheduledDays.length - 1], "end"),
-        scheduledDays: dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
+        scheduledDays: (dto.status === "CANCELLED")
+          ? []
+          : dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
           ? undefined
           : scheduling.scheduledDays,
         scheduledStartTime: dto.scheduledStartTime ?? undefined,
         scheduledEndTime: dto.scheduledEndTime ?? undefined,
-        dailyAssignmentsJson: dto.dailyAssignments === undefined && dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
+        dailyAssignmentsJson: (dto.status === "ON_HOLD" || dto.status === "CANCELLED")
+          ? JSON.stringify(scheduling.dailyAssignments)
+          : dto.dailyAssignments === undefined && dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
           ? undefined
           : JSON.stringify(scheduling.dailyAssignments),
         assignedOperativeIds: scheduling.assignedOperativeIds
@@ -137,17 +145,29 @@ export class JobsService {
     status: string,
     scheduling: { scheduledDays: string[]; dailyAssignments: Record<string, string[]>; assignedOperativeIds: string[] }
   ) {
+    if (status === "ON_HOLD") {
+      return {
+        scheduledDays: scheduling.scheduledDays,
+        dailyAssignments: Object.fromEntries(
+          scheduling.scheduledDays.map((day) => [day, []])
+        ) as Record<string, string[]>,
+        assignedOperativeIds: []
+      };
+    }
+
+    if (status === "CANCELLED") {
+      return {
+        scheduledDays: [],
+        dailyAssignments: {},
+        assignedOperativeIds: []
+      };
+    }
+
     if (status !== "ON_HOLD" && status !== "CANCELLED") {
       return scheduling;
     }
 
-    return {
-      scheduledDays: scheduling.scheduledDays,
-      dailyAssignments: Object.fromEntries(
-        scheduling.scheduledDays.map((day) => [day, []])
-      ) as Record<string, string[]>,
-      assignedOperativeIds: []
-    };
+    return scheduling;
   }
 
   private normalizeScheduledDays(scheduledDays?: string[], scheduledFor?: string, scheduledTo?: string) {

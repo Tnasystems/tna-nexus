@@ -327,6 +327,7 @@ function useJobsAndUsers() {
 }
 
 export function TenantOverviewPage() {
+  const { jobs, users } = useJobsAndUsers();
   const [data, setData] = useState<{
     company?: CompanySummary;
     reporting?: ReportingSummary;
@@ -344,9 +345,93 @@ export function TenantOverviewPage() {
       .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Failed to load dashboard."));
   }, []);
 
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const trainingWarningDate = new Date(now);
+  trainingWarningDate.setDate(trainingWarningDate.getDate() + 30);
+
+  const conflictAlerts = jobs
+    .filter((job) => !["CANCELLED", "ON_HOLD", "COMPLETED"].includes(job.status))
+    .flatMap((job) => (
+    getScheduledDaysForJob(job).flatMap((day) => {
+      const assignedUsers = getAssignedUsersForDay(job, day);
+
+      return assignedUsers
+        .filter((userId, index) => assignedUsers.indexOf(userId) === index)
+        .filter((userId) => hasJobConflictForUser(job, jobs, day, userId))
+        .map((userId) => {
+          const user = users.find((entry) => entry.id === userId);
+          return {
+            key: `${job.id}:${day}:${userId}`,
+            day,
+            jobId: job.id,
+            jobTitle: job.title,
+            jobNumber: job.companyJobNumber || job.customerJobNumber,
+            userId,
+            userName: user?.fullName ?? "Unknown operative"
+          };
+        });
+    })
+  ))
+    .filter((alert, index, alerts) => alerts.findIndex((entry) => entry.key === alert.key) === index)
+    .sort((first, second) => {
+      if (first.day !== second.day) {
+        return first.day.localeCompare(second.day);
+      }
+
+      if (first.userName !== second.userName) {
+        return first.userName.localeCompare(second.userName);
+      }
+
+      return first.jobTitle.localeCompare(second.jobTitle);
+    });
+
+  const trainingAlerts = users
+    .flatMap((user) => parseTrainingRecords(user.trainingRecordsJson).map((record) => ({ user, record })))
+    .map(({ user, record }) => {
+      const expiry = new Date(`${record.expiresOn}T00:00:00`);
+      expiry.setHours(0, 0, 0, 0);
+
+      if (expiry < now) {
+        return {
+          key: `${user.id}:${record.id}:expired`,
+          severity: "expired" as const,
+          userId: user.id,
+          userName: user.fullName,
+          trainingName: record.name,
+          expiresOn: record.expiresOn
+        };
+      }
+
+      if (expiry <= trainingWarningDate) {
+        return {
+          key: `${user.id}:${record.id}:warning`,
+          severity: "warning" as const,
+          userId: user.id,
+          userName: user.fullName,
+          trainingName: record.name,
+          expiresOn: record.expiresOn
+        };
+      }
+
+      return null;
+    })
+    .filter((alert): alert is NonNullable<typeof alert> => alert !== null)
+    .sort((first, second) => {
+      if (first.severity !== second.severity) {
+        return first.severity === "expired" ? -1 : 1;
+      }
+
+      if (first.expiresOn !== second.expiresOn) {
+        return first.expiresOn.localeCompare(second.expiresOn);
+      }
+
+      return first.userName.localeCompare(second.userName);
+    });
+
   return (
     <ProtectedWorkspace allow="tenant" description="Live company metrics, alerts, and operational status." title="Operations Overview">
-      {() => (
+      {(session) => (
         <>
           <ErrorText error={error} />
           <section className="metric-grid">
@@ -384,6 +469,74 @@ export function TenantOverviewPage() {
               </div>
             </article>
           </PanelGrid>
+
+          {canManageWorkspace(session.role) ? (
+            <PanelGrid>
+              <article className="panel" style={{ padding: 24 }}>
+                <h2 style={{ marginTop: 0 }}>Schedule conflicts</h2>
+                <div className="stack">
+                  {conflictAlerts.length === 0 ? (
+                    <div className="muted">No operative clashes found in the current schedule.</div>
+                  ) : (
+                    conflictAlerts.slice(0, 12).map((alert) => (
+                      <Link
+                        key={alert.key}
+                        href={jobDetailHref(alert.jobId, "schedule")}
+                        style={{
+                          display: "block",
+                          padding: 14,
+                          borderRadius: 16,
+                          border: "1px solid rgba(251, 113, 133, 0.4)",
+                          background: "rgba(251, 113, 133, 0.12)",
+                          color: "inherit",
+                          textDecoration: "none"
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{alert.jobTitle}</div>
+                        <div className="muted">{alert.jobNumber || "No job number"} • {alert.day}</div>
+                        <div style={{ marginTop: 6 }}>Conflict for {alert.userName}</div>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </article>
+
+              <article className="panel" style={{ padding: 24 }}>
+                <h2 style={{ marginTop: 0 }}>Training alerts</h2>
+                <div className="stack">
+                  {trainingAlerts.length === 0 ? (
+                    <div className="muted">No expired or upcoming training renewals.</div>
+                  ) : (
+                    trainingAlerts.slice(0, 12).map((alert) => (
+                      <Link
+                        key={alert.key}
+                        href={userDetailHref(alert.userId, "training")}
+                        style={{
+                          display: "block",
+                          padding: 14,
+                          borderRadius: 16,
+                          border: alert.severity === "expired"
+                            ? "1px solid rgba(251, 113, 133, 0.4)"
+                            : "1px solid rgba(251, 191, 36, 0.4)",
+                          background: alert.severity === "expired"
+                            ? "rgba(251, 113, 133, 0.12)"
+                            : "rgba(251, 191, 36, 0.12)",
+                          color: "inherit",
+                          textDecoration: "none"
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{alert.trainingName}</div>
+                        <div className="muted">{alert.userName}</div>
+                        <div style={{ marginTop: 6 }}>
+                          {alert.severity === "expired" ? "Expired" : "Due soon"} on {alert.expiresOn}
+                        </div>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </article>
+            </PanelGrid>
+          ) : null}
         </>
       )}
     </ProtectedWorkspace>

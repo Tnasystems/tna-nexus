@@ -4,7 +4,7 @@ import { FormEvent, Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProtectedWorkspace } from "./protected-workspace";
-import { apiRequest } from "../lib/api";
+import { apiRequest, apiRequestBlob } from "../lib/api";
 import { buildSession, persistSession, type AppSession, type AuthTokenResponse } from "../lib/auth";
 import { JOB_STATUS_VALUES, ROLE_VALUES } from "@tna-nexus/shared";
 
@@ -163,7 +163,8 @@ interface TrainingRecord {
   name: string;
   expiresOn: string;
   certificateFileName?: string;
-  certificateDataUrl?: string;
+  certificateDocumentId?: string;
+  certificateMimeType?: string;
 }
 
 function parseTrainingRecords(value: string | null | undefined) {
@@ -177,6 +178,20 @@ function parseTrainingRecords(value: string | null | undefined) {
   } catch {
     return [];
   }
+}
+
+async function openProtectedFile(path: string, fallbackFileName: string) {
+  const blob = await apiRequestBlob(path);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.download = fallbackFileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 function getTrainingState(user: UserRecord) {
@@ -1895,6 +1910,8 @@ export function UserRecordPage({
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
   });
   const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([]);
+  const [uploadingRecordId, setUploadingRecordId] = useState<string | null>(null);
+  const [openingRecordId, setOpeningRecordId] = useState<string | null>(null);
   const [form, setForm] = useState<{
     email: string;
     fullName: string;
@@ -2011,17 +2028,40 @@ export function UserRecordPage({
       return;
     }
 
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
+    setUploadingRecordId(recordId);
+    setError(null);
+    setSuccess(null);
 
-    updateTrainingRecord(recordId, {
-      certificateFileName: file.name,
-      certificateDataUrl: dataUrl
-    });
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const uploaded = await apiRequest<TrainingRecord>(`users/${userId}/training-records/${recordId}/certificate`, {
+        method: "POST",
+        body: formData
+      });
+      updateTrainingRecord(recordId, uploaded);
+      setSuccess("Certificate uploaded successfully.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to upload certificate.");
+    } finally {
+      setUploadingRecordId(null);
+    }
+  }
+
+  async function handleOpenTrainingCertificate(record: TrainingRecord) {
+    setOpeningRecordId(record.id);
+    setError(null);
+
+    try {
+      await openProtectedFile(
+        `users/${userId}/training-records/${record.id}/certificate`,
+        record.certificateFileName ?? `${record.name || "certificate"}.bin`
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to open certificate.");
+    } finally {
+      setOpeningRecordId(null);
+    }
   }
 
   async function setAccountStatus(status: "ACTIVE" | "SUSPENDED" | "DISABLED") {
@@ -2292,22 +2332,22 @@ export function UserRecordPage({
                                 <div className="muted">Expiry: {record.expiresOn || "Not set"}</div>
                               </>
                             )}
-                            <div className="muted">{record.certificateFileName ? `Selected: ${record.certificateFileName}` : "No certificate selected."}</div>
-                            {record.certificateDataUrl ? (
+                            <div className="muted">{record.certificateFileName ? `Stored: ${record.certificateFileName}` : "No certificate selected."}</div>
+                            {canManage && record.certificateDocumentId ? (
                               <div style={{ display: "grid", gap: 10 }}>
-                                <a className="badge" href={record.certificateDataUrl} rel="noreferrer" target="_blank">Open certificate</a>
-                                {record.certificateDataUrl.startsWith("data:image/") ? (
-                                  <img
-                                    alt={record.certificateFileName ?? record.name}
-                                    src={record.certificateDataUrl}
-                                    style={{ maxWidth: 220, borderRadius: 16, border: "1px solid var(--line)" }}
-                                  />
-                                ) : null}
+                                <button
+                                  className="button button-subtle"
+                                  disabled={openingRecordId === record.id}
+                                  onClick={() => void handleOpenTrainingCertificate(record)}
+                                  type="button"
+                                >
+                                  Open certificate
+                                </button>
                               </div>
                             ) : null}
                             {canManage ? (
                               <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                                <button className="button button-subtle" onClick={() => removeTrainingRecord(record.id)} type="button">Remove Record</button>
+                                <button className="button button-subtle" disabled={uploadingRecordId === record.id} onClick={() => removeTrainingRecord(record.id)} type="button">Remove Record</button>
                               </div>
                             ) : null}
                           </div>
@@ -2384,6 +2424,7 @@ export function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -2407,6 +2448,18 @@ export function DocumentsPage() {
     await load();
   }
 
+  async function handleOpenDocument(documentId: string, documentName: string) {
+    setOpeningDocumentId(documentId);
+    try {
+      await openProtectedFile(`documents/${documentId}/download`, documentName);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to open document.");
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  }
+
   return (
     <ProtectedWorkspace allow="tenant" description="Generate placeholder documentation and keep records visible." title="Documents">
       {() => (
@@ -2427,6 +2480,15 @@ export function DocumentsPage() {
                 <div key={String(document.id)} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
                   <div style={{ fontWeight: 700 }}>{String(document.name)}</div>
                   <div className="muted">{String(document.mimeType)}</div>
+                  <button
+                    className="button button-subtle"
+                    disabled={openingDocumentId === String(document.id)}
+                    onClick={() => void handleOpenDocument(String(document.id), String(document.name))}
+                    style={{ marginTop: 10 }}
+                    type="button"
+                  >
+                    Open Document
+                  </button>
                 </div>
               ))}
             </div>

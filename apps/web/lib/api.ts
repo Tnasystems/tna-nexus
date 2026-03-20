@@ -9,7 +9,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${session.accessToken}`);
 
-  if (init.body && !headers.has("Content-Type")) {
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -29,4 +29,31 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
   }
 
   return body as T;
+}
+
+export async function apiRequestBlob(path: string, init: RequestInit = {}) {
+  const session = readSession();
+  if (!session) {
+    throw new Error("You are not signed in.");
+  }
+
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${session.accessToken}`);
+
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/${path}`, {
+    ...init,
+    headers
+  });
+
+  if (response.status === 401) {
+    clearSession();
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const message = body?.message ?? `Request failed for ${path}.`;
+    throw new Error(Array.isArray(message) ? message.join(", ") : message);
+  }
+
+  return response.blob();
 }

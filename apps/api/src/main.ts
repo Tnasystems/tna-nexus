@@ -5,8 +5,6 @@ import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
-import staticFiles from "@fastify/static";
-import { join } from "node:path";
 import { AppModule } from "./modules/app.module";
 
 async function bootstrap() {
@@ -21,11 +19,6 @@ async function bootstrap() {
 
   await app.register(cookie as never);
   await app.register(multipart as never, { limits: { fileSize: 10 * 1024 * 1024 } });
-  await app.register(staticFiles as never, {
-    root: join(process.cwd(), config.getOrThrow<string>("UPLOAD_ROOT")),
-    prefix: "/uploads/"
-  });
-
   app.enableCors({
     origin: [config.getOrThrow<string>("APP_URL")],
     credentials: true

@@ -1,7 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { JwtUser } from "@tna-nexus/shared";
 import { ConfigService } from "@nestjs/config";
 import { TenantAccessService } from "../../auth/tenant-access.service";
@@ -34,5 +34,20 @@ export class DocumentsService {
         mimeType: "text/plain"
       }
     });
+  }
+
+  async download(user: JwtUser, documentId: string) {
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const document = await prisma.document.findUnique({ where: { id: documentId } });
+
+    if (!document) {
+      throw new NotFoundException("Document not found.");
+    }
+
+    return {
+      fileName: document.name,
+      mimeType: document.mimeType,
+      buffer: await readFile(document.storagePath)
+    };
   }
 }

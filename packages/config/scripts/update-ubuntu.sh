@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 DEFAULT_INSTALL_DIR="/var/www/tna-nexus"
 INSTALL_DIR="${INSTALL_DIR:-}"
+SOURCE_DIR="${SOURCE_DIR:-}"
 APP_USER="${APP_USER:-$USER}"
 GIT_PULL="${GIT_PULL:-yes}"
 RUN_PLATFORM_MIGRATION="${RUN_PLATFORM_MIGRATION:-yes}"
@@ -24,6 +25,7 @@ Usage:
 
 Optional environment variables:
   INSTALL_DIR=/var/www/tna-nexus
+  SOURCE_DIR=/home/your-user/tna-nexus
   APP_USER=tna-nexus
   GIT_PULL=yes|no
   RUN_PLATFORM_MIGRATION=yes|no
@@ -51,7 +53,32 @@ resolve_install_dir() {
   echo "${DEFAULT_REPO_ROOT}"
 }
 
+resolve_source_dir() {
+  if [[ -n "${SOURCE_DIR}" ]]; then
+    echo "${SOURCE_DIR}"
+    return 0
+  fi
+
+  if [[ -d "${PWD}/.git" ]]; then
+    echo "${PWD}"
+    return 0
+  fi
+
+  if [[ -d "${DEFAULT_REPO_ROOT}/.git" ]]; then
+    echo "${DEFAULT_REPO_ROOT}"
+    return 0
+  fi
+
+  if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    echo "${INSTALL_DIR}"
+    return 0
+  fi
+
+  echo ""
+}
+
 INSTALL_DIR="$(resolve_install_dir)"
+SOURCE_DIR="$(resolve_source_dir)"
 
 if [[ ! -f "${INSTALL_DIR}/package.json" ]]; then
   usage
@@ -73,13 +100,26 @@ fi
 cd "${INSTALL_DIR}"
 
 if [[ "${GIT_PULL}" == "yes" ]]; then
-  if [[ -d .git ]]; then
+  if [[ -n "${SOURCE_DIR}" && -d "${SOURCE_DIR}/.git" ]]; then
     echo "Pulling latest code..."
-    git pull --ff-only
+    git -C "${SOURCE_DIR}" pull --ff-only
   else
-    echo "GIT_PULL=yes was set, but ${INSTALL_DIR} is not a git checkout."
+    echo "GIT_PULL=yes was set, but no git checkout was found."
     exit 1
   fi
+fi
+
+if [[ -n "${SOURCE_DIR}" && "${SOURCE_DIR}" != "${INSTALL_DIR}" ]]; then
+  echo "Syncing source into install directory..."
+  rsync -a --delete \
+    --exclude .git \
+    --exclude node_modules \
+    --exclude .next \
+    --exclude dist \
+    --exclude uploads \
+    --exclude backups \
+    --exclude .env \
+    "${SOURCE_DIR}/" "${INSTALL_DIR}/"
 fi
 
 if [[ -f "${INSTALL_DIR}/.env" ]]; then

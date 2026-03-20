@@ -191,7 +191,11 @@ run_tenant_migrations() {
 }
 
 echo "Installing dependencies..."
-pnpm install --frozen-lockfile
+if [[ -f "${INSTALL_DIR}/pnpm-lock.yaml" ]]; then
+  pnpm install --frozen-lockfile
+else
+  pnpm install
+fi
 
 echo "Building shared package..."
 pnpm --filter @tna-nexus/shared build

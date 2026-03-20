@@ -1385,7 +1385,7 @@ export function JobRecordPage({
                         {form.scheduledDays.map((day) => (
                           <div key={day} className="assignment-pill">
                             <span>{new Date(`${day}T00:00:00`).toLocaleDateString()}</span>
-                            <button className="assignment-pill-remove" onClick={() => removeScheduledDay(day)} type="button">Remove</button>
+                            {canManage ? <button className="assignment-pill-remove" onClick={() => removeScheduledDay(day)} type="button">Remove</button> : null}
                           </div>
                         ))}
                       </div>

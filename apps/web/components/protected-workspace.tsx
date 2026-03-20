@@ -5,6 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { readSession, type AppSession } from "../lib/auth";
 import { WorkspaceShell } from "./workspace-shell";
 
+function operativeAllowedPath(pathname: string) {
+  return pathname === "/dashboard/calendar" ||
+    pathname === "/dashboard/jobs" ||
+    pathname.startsWith("/dashboard/jobs/");
+}
+
 export function ProtectedWorkspace({
   children,
   title,
@@ -36,6 +42,11 @@ export function ProtectedWorkspace({
 
     if (allow === "tenant" && nextSession.user.role === "PLATFORM_ADMIN" && !isSupportSession) {
       router.replace("/dashboard/admin");
+      return;
+    }
+
+    if (allow === "tenant" && nextSession.user.role === "OPERATIVE" && !operativeAllowedPath(pathname)) {
+      router.replace("/dashboard/calendar");
       return;
     }
 

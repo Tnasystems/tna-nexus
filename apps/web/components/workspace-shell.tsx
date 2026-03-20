@@ -18,6 +18,11 @@ const tenantNav = [
   { label: "Reporting", href: "/dashboard/reporting", icon: FileBarChart2 }
 ];
 
+const operativeNav = [
+  { label: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
+  { label: "Jobs", href: "/dashboard/jobs", icon: BriefcaseBusiness }
+];
+
 const adminNav = [
   { label: "Admin Home", href: "/dashboard/admin", icon: Shield },
   { label: "Companies", href: "/dashboard/admin", icon: Building2 }
@@ -37,7 +42,12 @@ export function WorkspaceShell({
   const pathname = usePathname();
   const router = useRouter();
   const isSupportSession = session.user.role === "PLATFORM_ADMIN" && !!session.user.companyId && !!session.user.tenantSlug;
-  const nav = session.user.role === "PLATFORM_ADMIN" && !isSupportSession ? adminNav : tenantNav;
+  const isOperative = session.user.role === "OPERATIVE";
+  const nav = session.user.role === "PLATFORM_ADMIN" && !isSupportSession
+    ? adminNav
+    : isOperative
+      ? operativeNav
+      : tenantNav;
 
   function handleLogout() {
     clearSession();
@@ -61,8 +71,8 @@ export function WorkspaceShell({
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link className="badge" href="/">Home</Link>
-              <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a>
+              {!isOperative ? <Link className="badge" href="/">Home</Link> : null}
+              {!isOperative ? <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a> : null}
               {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
             </div>
           </div>

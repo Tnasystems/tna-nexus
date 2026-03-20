@@ -329,10 +329,10 @@ cd /var/www/tna-nexus
 bash update.sh
 ```
 
-If you also want the script to pull from git first:
+If you need to skip the git pull and just rebuild what is already on the server:
 ```bash
 cd /var/www/tna-nexus
-GIT_PULL=yes bash update.sh
+GIT_PULL=no bash update.sh
 ```
 
 ## 26. Backups

@@ -34,6 +34,15 @@ Optional environment variables:
 EOF
 }
 
+read_env_value() {
+  local key="$1"
+  local env_file="${INSTALL_DIR}/.env"
+
+  if [[ -f "${env_file}" ]]; then
+    grep -E "^${key}=" "${env_file}" | head -n 1 | cut -d '=' -f2-
+  fi
+}
+
 resolve_install_dir() {
   if [[ -n "${INSTALL_DIR}" ]]; then
     echo "${INSTALL_DIR}"
@@ -123,10 +132,11 @@ if [[ -n "${SOURCE_DIR}" && "${SOURCE_DIR}" != "${INSTALL_DIR}" ]]; then
 fi
 
 if [[ -f "${INSTALL_DIR}/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${INSTALL_DIR}/.env"
-  set +a
+  PLATFORM_DATABASE_URL="${PLATFORM_DATABASE_URL:-$(read_env_value PLATFORM_DATABASE_URL)}"
+  POSTGRES_HOST="${POSTGRES_HOST:-$(read_env_value POSTGRES_HOST)}"
+  POSTGRES_PORT="${POSTGRES_PORT:-$(read_env_value POSTGRES_PORT)}"
+  POSTGRES_SUPERUSER="${POSTGRES_SUPERUSER:-$(read_env_value POSTGRES_SUPERUSER)}"
+  POSTGRES_SUPERUSER_PASSWORD="${POSTGRES_SUPERUSER_PASSWORD:-$(read_env_value POSTGRES_SUPERUSER_PASSWORD)}"
 else
   echo "Missing ${INSTALL_DIR}/.env"
   echo "Tip: if your live install is elsewhere, run INSTALL_DIR=/your/install/path bash update.sh"

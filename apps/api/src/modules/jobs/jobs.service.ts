@@ -38,7 +38,10 @@ export class JobsService {
   async create(user: JwtUser, dto: CreateJobDto) {
     this.ensureManager(user);
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.buildScheduling(dto);
+    const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.normalizeAssignmentsForStatus(
+      dto.status,
+      this.buildScheduling(dto)
+    );
     return prisma.job.create({
       data: {
         id: randomUUID(),
@@ -67,7 +70,10 @@ export class JobsService {
       throw new NotFoundException("Job not found.");
     }
 
-    const scheduling = this.buildScheduling(dto, existing);
+    const scheduling = this.normalizeAssignmentsForStatus(
+      dto.status ?? existing.status,
+      this.buildScheduling(dto, existing)
+    );
 
     return prisma.job.update({
       where: { id: jobId },
@@ -125,6 +131,23 @@ export class JobsService {
     )];
 
     return { scheduledDays, dailyAssignments, assignedOperativeIds };
+  }
+
+  private normalizeAssignmentsForStatus(
+    status: string,
+    scheduling: { scheduledDays: string[]; dailyAssignments: Record<string, string[]>; assignedOperativeIds: string[] }
+  ) {
+    if (status !== "ON_HOLD" && status !== "CANCELLED") {
+      return scheduling;
+    }
+
+    return {
+      scheduledDays: scheduling.scheduledDays,
+      dailyAssignments: Object.fromEntries(
+        scheduling.scheduledDays.map((day) => [day, []])
+      ) as Record<string, string[]>,
+      assignedOperativeIds: []
+    };
   }
 
   private normalizeScheduledDays(scheduledDays?: string[], scheduledFor?: string, scheduledTo?: string) {

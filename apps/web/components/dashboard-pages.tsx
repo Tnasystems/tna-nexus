@@ -670,10 +670,97 @@ function createCrudPage(config: {
 }
 
 export function JobsPage() {
+  const { jobs, users, error } = useJobsAndUsers();
+  const [searchTerm, setSearchTerm] = useState("");
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleJobs = normalizedSearchTerm
+    ? jobs.filter((job) => (
+      job.title.toLowerCase().includes(normalizedSearchTerm) ||
+      job.companyJobNumber.toLowerCase().includes(normalizedSearchTerm) ||
+      job.customerJobNumber.toLowerCase().includes(normalizedSearchTerm)
+    ))
+    : [...jobs].slice(0, 10);
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="View the most recent jobs and open them for review." title="Jobs">
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        return (
+          <div className="stack">
+            <ErrorText error={error} />
+            <article className="panel" style={{ padding: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>{canManage ? "Latest jobs" : "My latest jobs"}</h2>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    {normalizedSearchTerm
+                      ? `Showing ${visibleJobs.length} matching job${visibleJobs.length === 1 ? "" : "s"}.`
+                      : canManage
+                        ? "The 10 most recently created jobs across the workspace."
+                        : "The 10 most recent jobs assigned to you."}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
+                  <label className="field" style={{ minWidth: 280 }}>
+                    <span>Search jobs</span>
+                    <input
+                      className="input"
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="Job number or title"
+                      type="search"
+                      value={searchTerm}
+                    />
+                  </label>
+                  {canManage ? <Link className="button" href="/dashboard/jobs/new">Create Job</Link> : null}
+                </div>
+              </div>
+            </article>
+            <article className="panel" style={{ padding: 24 }}>
+              <div className="stack">
+                {visibleJobs.length === 0 ? <div className="muted">No jobs found.</div> : null}
+                {visibleJobs.map((job) => (
+                  <Link key={job.id} className="panel" href={jobDetailHref(job.id, canManage ? "details" : "schedule")} style={{ padding: 18 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{job.companyJobNumber}</div>
+                        <div className="muted" style={{ marginTop: 4 }}>{job.title}</div>
+                      </div>
+                      <div className="badge">{job.status.replaceAll("_", " ")}</div>
+                    </div>
+                    <div className="muted" style={{ marginTop: 10 }}>{job.siteAddress}</div>
+                    <div className="muted">
+                      Working hours: {job.scheduledStartTime && job.scheduledEndTime ? `${job.scheduledStartTime} - ${job.scheduledEndTime}` : "Not set"}
+                    </div>
+                    <div className="muted">
+                      Scheduled: {getScheduledDaysForJob(job).length > 0
+                        ? getScheduledDaysForJob(job).map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")
+                        : "Not scheduled"}
+                    </div>
+                    <div className="muted">
+                      Assigned: {[...new Set(getScheduledDaysForJob(job).flatMap((day) => getAssignedUsersForDay(job, day)))].length > 0
+                        ? [...new Set(getScheduledDaysForJob(job).flatMap((day) => getAssignedUsersForDay(job, day)))].map((id) => usersById.get(id)?.fullName ?? id).join(", ")
+                        : "Unassigned"}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </article>
+          </div>
+        );
+      }}
+    </ProtectedWorkspace>
+  );
+}
+
+export function CreateJobPage() {
+  const router = useRouter();
   const { jobs, users, error, reload } = useJobsAndUsers();
-  const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
+  const [selectedDay, setSelectedDay] = useState("");
+  const [selectedOperativeId, setSelectedOperativeId] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -695,8 +782,6 @@ export function JobsPage() {
     scheduledDays: [],
     dailyAssignments: {}
   });
-  const [selectedDay, setSelectedDay] = useState("");
-  const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
 
@@ -707,7 +792,6 @@ export function JobsPage() {
 
     const startDate = new Date(`${start}T00:00:00`);
     const endDate = new Date(`${end}T00:00:00`);
-
     if (endDate < startDate) {
       return [] as string[];
     }
@@ -722,23 +806,6 @@ export function JobsPage() {
     return days;
   }
 
-  function addScheduledDay() {
-    if (!selectedDay) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      scheduledDays: current.scheduledDays.includes(selectedDay)
-        ? current.scheduledDays
-        : [...current.scheduledDays, selectedDay].sort(),
-      dailyAssignments: current.dailyAssignments[selectedDay]
-        ? current.dailyAssignments
-        : { ...current.dailyAssignments, [selectedDay]: [] }
-    }));
-    setSelectedDay("");
-  }
-
   function applyDateRange() {
     const days = buildDateRange(rangeStart, rangeEnd);
     if (days.length === 0) {
@@ -748,19 +815,30 @@ export function JobsPage() {
     setForm((current) => ({
       ...current,
       scheduledDays: days,
-      dailyAssignments: Object.fromEntries(
-        days.map((day) => [day, current.dailyAssignments[day] ?? []])
-      )
+      dailyAssignments: Object.fromEntries(days.map((day) => [day, current.dailyAssignments[day] ?? []]))
     }));
+  }
+
+  function addScheduledDay() {
+    if (!selectedDay) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      scheduledDays: current.scheduledDays.includes(selectedDay) ? current.scheduledDays : [...current.scheduledDays, selectedDay].sort(),
+      dailyAssignments: current.dailyAssignments[selectedDay]
+        ? current.dailyAssignments
+        : { ...current.dailyAssignments, [selectedDay]: [] }
+    }));
+    setSelectedDay("");
   }
 
   function removeScheduledDay(day: string) {
     setForm((current) => ({
       ...current,
       scheduledDays: current.scheduledDays.filter((entry) => entry !== day),
-      dailyAssignments: Object.fromEntries(
-        Object.entries(current.dailyAssignments).filter(([entry]) => entry !== day)
-      )
+      dailyAssignments: Object.fromEntries(Object.entries(current.dailyAssignments).filter(([entry]) => entry !== day))
     }));
   }
 
@@ -793,94 +871,13 @@ export function JobsPage() {
     }));
   }
 
-  function resetForm() {
-    setForm({
-      title: "",
-      companyJobNumber: "",
-      customerJobNumber: "",
-      siteAddress: "",
-      status: JOB_STATUS_VALUES[1],
-      scheduledStartTime: "08:00",
-      scheduledEndTime: "17:00",
-      scheduledDays: [],
-      dailyAssignments: {}
-    });
-    setSelectedDay("");
-    setRangeStart("");
-    setRangeEnd("");
-    setSelectedOperativeId("");
-    setEditingJobId(null);
-  }
-
-  function startEdit(job: JobRecord) {
-    const scheduledDays = (job.scheduledDays ?? []).length > 0
-      ? [...job.scheduledDays].sort()
-      : [job.scheduledFor ? new Date(job.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
-    setEditingJobId(job.id);
-    setForm({
-      title: job.title,
-      companyJobNumber: job.companyJobNumber,
-      customerJobNumber: job.customerJobNumber,
-      siteAddress: job.siteAddress,
-      status: job.status,
-      scheduledStartTime: job.scheduledStartTime ?? "08:00",
-      scheduledEndTime: job.scheduledEndTime ?? "17:00",
-      scheduledDays,
-      dailyAssignments: Object.fromEntries(
-        scheduledDays.map((day) => [day, getAssignedUsersForDay(job, day)])
-      )
-    });
-    setRangeStart(scheduledDays[0] ?? "");
-    setRangeEnd(scheduledDays[scheduledDays.length - 1] ?? "");
-  }
-
-  useEffect(() => {
-    if (typeof window === "undefined" || jobs.length === 0) {
-      return;
-    }
-
-    const requestedJobId = new URLSearchParams(window.location.search).get("edit");
-    if (!requestedJobId) {
-      return;
-    }
-
-    const job = jobs.find((entry) => entry.id === requestedJobId);
-    if (!job) {
-      return;
-    }
-
-    startEdit(job);
-  }, [jobs]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const payload = {
-      ...form,
-      scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
-      scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
-      scheduledStartTime: form.scheduledStartTime || undefined,
-      scheduledEndTime: form.scheduledEndTime || undefined,
-      dailyAssignments: Object.fromEntries(
-        form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
-      )
-    };
-    if (editingJobId) {
-      await apiRequest(`jobs/${editingJobId}`, { method: "PATCH", body: JSON.stringify(payload) });
-    } else {
-      await apiRequest("jobs", { method: "POST", body: JSON.stringify(payload) });
-    }
-    resetForm();
-    await reload();
-  }
-
   const assignmentWarnings = form.scheduledDays.flatMap((day) =>
     (form.dailyAssignments[day] ?? []).flatMap((userId) => {
       const conflicts = jobs.filter((job) =>
-        job.id !== editingJobId &&
         getAssignedUsersForDay(job, day).includes(userId) &&
         jobsOverlapByTime(
           {
-            id: editingJobId ?? "new-job",
+            id: "new-job",
             title: form.title,
             companyJobNumber: form.companyJobNumber,
             customerJobNumber: form.customerJobNumber,
@@ -908,15 +905,41 @@ export function JobsPage() {
     })
   );
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError(null);
+    try {
+      await apiRequest("jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
+          scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
+          scheduledStartTime: form.scheduledStartTime || undefined,
+          scheduledEndTime: form.scheduledEndTime || undefined,
+          dailyAssignments: Object.fromEntries(
+            form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
+          )
+        })
+      });
+      await reload();
+      router.replace("/dashboard/jobs");
+      router.refresh();
+    } catch (caughtError) {
+      setSubmitError(caughtError instanceof Error ? caughtError.message : "Failed to create job.");
+    }
+  }
+
   return (
-    <ProtectedWorkspace allow="tenant" description="Create and track operational jobs across sites." title="Jobs">
+    <ProtectedWorkspace allow="tenant" description="Create a new job and assign it to the right team." title="Create Job">
       {(session) => {
         const canManage = canManageWorkspace(session.user.role);
+        if (!canManage) {
+          return <div className="panel" style={{ padding: 24 }}>Only managers can create jobs.</div>;
+        }
+
         return (
-        <PanelGrid>
-          {canManage ? (
           <article className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0 }}>{editingJobId ? "Edit job" : "Create job"}</h2>
             <form className="stack" onSubmit={handleSubmit}>
               <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
               <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
@@ -961,7 +984,7 @@ export function JobsPage() {
                 <span>Assign operatives by day</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
                   <label className="field" style={{ flex: "1 1 260px" }}>
-                    <span>Select team member</span>
+                    <span>Select operative</span>
                     <select className="input" onChange={(event) => setSelectedOperativeId(event.target.value)} value={selectedOperativeId}>
                       <option value="">Choose a team member</option>
                       {operativeOptions.map((user) => (
@@ -976,7 +999,6 @@ export function JobsPage() {
                     {assignmentWarnings.map((warning) => (
                       <div key={`${warning.day}-${warning.userId}-${warning.companyJobNumber}`}>
                         {warning.userName} already has {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
-                        The time window overlaps. You can still save this job, or remove them from that day below if they need relocating.
                       </div>
                     ))}
                   </div>
@@ -1000,55 +1022,14 @@ export function JobsPage() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <button className="button" type="submit">{editingJobId ? "Save Changes" : "Create Job"}</button>
-                {editingJobId ? (
-                  <button className="button button-subtle" onClick={resetForm} type="button">Cancel Edit</button>
-                ) : null}
+                <button className="button" type="submit">Create Job</button>
+                <Link className="button button-subtle" href="/dashboard/jobs">Cancel</Link>
               </div>
             </form>
-            <ErrorText error={error} />
+            <ErrorText error={submitError ?? error} />
           </article>
-          ) : (
-          <article className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0 }}>My assigned jobs</h2>
-            <p className="muted" style={{ margin: 0 }}>You can view the jobs assigned to you and who you are working with, but only managers can create or edit jobs.</p>
-            <ErrorText error={error} />
-          </article>
-          )}
-          <article className="panel" style={{ padding: 24 }}>
-            <h2 style={{ marginTop: 0 }}>Job board</h2>
-            <div className="stack">
-              {jobs.map((job) => (
-                <div key={job.id} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
-                    <div style={{ fontWeight: 700 }}>{job.title}</div>
-                    <Link className="button button-subtle" href={jobDetailHref(job.id, canManage ? "details" : "schedule")}>
-                      {canManage ? "Open" : "View"}
-                    </Link>
-                  </div>
-                  <div className="muted">
-                    {job.companyJobNumber} / {job.customerJobNumber} - {job.status}
-                  </div>
-                  <div className="muted">{job.siteAddress}</div>
-                  <div className="muted">
-                    Working hours: {job.scheduledStartTime && job.scheduledEndTime ? `${job.scheduledStartTime} - ${job.scheduledEndTime}` : "Not set"}
-                  </div>
-                  <div className="muted">
-                    Scheduled: {(job.scheduledDays ?? []).length > 0
-                      ? job.scheduledDays.map((day) => new Date(`${day}T00:00:00`).toLocaleDateString()).join(", ")
-                      : "Not scheduled"}
-                  </div>
-                  <div className="muted">
-                    Assigned: {job.scheduledDays.flatMap((day) => getAssignedUsersForDay(job, day)).length > 0
-                      ? [...new Set(job.scheduledDays.flatMap((day) => getAssignedUsersForDay(job, day)))].map((id) => usersById.get(id)?.fullName ?? id).join(", ")
-                      : "Unassigned"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-        </PanelGrid>
-      )}}
+        );
+      }}
     </ProtectedWorkspace>
   );
 }

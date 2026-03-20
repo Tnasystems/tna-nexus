@@ -470,7 +470,7 @@ export function TenantOverviewPage() {
             </article>
           </PanelGrid>
 
-          {canManageWorkspace(session.role) ? (
+          {canManageWorkspace(session.user.role) ? (
             <PanelGrid>
               <article className="panel" style={{ padding: 24 }}>
                 <h2 style={{ marginTop: 0 }}>Schedule conflicts</h2>

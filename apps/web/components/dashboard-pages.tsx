@@ -12,6 +12,23 @@ function PanelGrid({ children }: Readonly<{ children: React.ReactNode }>) {
   return <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>{children}</section>;
 }
 
+function ScrollList({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        maxHeight: 246,
+        overflowY: "auto",
+        paddingRight: 6
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function ErrorText({ error }: Readonly<{ error: string | null }>) {
   return error ? <div className="error-banner">{error}</div> : null;
 }
@@ -331,17 +348,15 @@ export function TenantOverviewPage() {
   const [data, setData] = useState<{
     company?: CompanySummary;
     reporting?: ReportingSummary;
-    notifications?: NotificationRecord[];
   }>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       apiRequest<CompanySummary>("companies/me"),
-      apiRequest<ReportingSummary>("reporting/summary"),
-      apiRequest<NotificationRecord[]>("notifications")
+      apiRequest<ReportingSummary>("reporting/summary")
     ])
-      .then(([company, reporting, notifications]) => setData({ company, reporting, notifications }))
+      .then(([company, reporting]) => setData({ company, reporting }))
       .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Failed to load dashboard."));
   }, []);
 
@@ -448,37 +463,15 @@ export function TenantOverviewPage() {
             ))}
           </section>
 
-          <PanelGrid>
-            <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>Company profile</h2>
-              <div className="stack">
-                <div><strong>Name:</strong> {data.company?.company.name ?? "-"}</div>
-                <div><strong>Slug:</strong> {data.company?.company.slug ?? "-"}</div>
-                <div><strong>Assets:</strong> {data.company?.metrics.assets ?? 0}</div>
-              </div>
-            </article>
-            <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>Latest notifications</h2>
-              <div className="stack">
-                {(data.notifications ?? []).slice(0, 5).map((item) => (
-                  <div key={item.id} style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
-                    <div style={{ fontWeight: 700 }}>{item.title}</div>
-                    <div className="muted">{item.channel} - {item.status}</div>
-                  </div>
-                ))}
-              </div>
-            </article>
-          </PanelGrid>
-
           {canManageWorkspace(session.user.role) ? (
             <PanelGrid>
               <article className="panel" style={{ padding: 24 }}>
                 <h2 style={{ marginTop: 0 }}>Schedule conflicts</h2>
-                <div className="stack">
+                <ScrollList>
                   {conflictAlerts.length === 0 ? (
                     <div className="muted">No operative clashes found in the current schedule.</div>
                   ) : (
-                    conflictAlerts.slice(0, 12).map((alert) => (
+                    conflictAlerts.map((alert) => (
                       <Link
                         key={alert.key}
                         href={jobDetailHref(alert.jobId, "schedule")}
@@ -498,16 +491,16 @@ export function TenantOverviewPage() {
                       </Link>
                     ))
                   )}
-                </div>
+                </ScrollList>
               </article>
 
               <article className="panel" style={{ padding: 24 }}>
                 <h2 style={{ marginTop: 0 }}>Training alerts</h2>
-                <div className="stack">
+                <ScrollList>
                   {trainingAlerts.length === 0 ? (
                     <div className="muted">No expired or upcoming training renewals.</div>
                   ) : (
-                    trainingAlerts.slice(0, 12).map((alert) => (
+                    trainingAlerts.map((alert) => (
                       <Link
                         key={alert.key}
                         href={userDetailHref(alert.userId, "training")}
@@ -533,7 +526,7 @@ export function TenantOverviewPage() {
                       </Link>
                     ))
                   )}
-                </div>
+                </ScrollList>
               </article>
             </PanelGrid>
           ) : null}

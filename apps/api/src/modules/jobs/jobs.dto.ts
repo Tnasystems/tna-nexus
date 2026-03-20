@@ -19,6 +19,16 @@ export class CreateJobDto {
   @IsString()
   siteAddress!: string;
 
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  externalInfo?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  internalInfo?: string;
+
   @ApiProperty({ enum: JOB_STATUS_VALUES })
   @IsIn(JOB_STATUS_VALUES)
   status!: string;

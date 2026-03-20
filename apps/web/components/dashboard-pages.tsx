@@ -113,6 +113,8 @@ interface JobRecord {
   companyJobNumber: string;
   customerJobNumber: string;
   siteAddress: string;
+  externalInfo?: string | null;
+  internalInfo?: string | null;
   status: string;
   scheduledFor: string | null;
   scheduledTo: string | null;
@@ -179,7 +181,7 @@ function getScheduledDaysForJob(job: JobRecord) {
   return [new Date(job.scheduledFor).toISOString().slice(0, 10)];
 }
 
-function jobDetailHref(jobId: string, tab: "details" | "schedule" = "details") {
+function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" = "details") {
   return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
 
@@ -912,6 +914,8 @@ export function CreateJobPage() {
     companyJobNumber: string;
     customerJobNumber: string;
     siteAddress: string;
+    externalInfo: string;
+    internalInfo: string;
     status: string;
     scheduledStartTime: string;
     scheduledEndTime: string;
@@ -922,6 +926,8 @@ export function CreateJobPage() {
     companyJobNumber: "",
     customerJobNumber: "",
     siteAddress: "",
+    externalInfo: "",
+    internalInfo: "",
     status: JOB_STATUS_VALUES[1],
     scheduledStartTime: "08:00",
     scheduledEndTime: "17:00",
@@ -1028,6 +1034,8 @@ export function CreateJobPage() {
             companyJobNumber: form.companyJobNumber,
             customerJobNumber: form.customerJobNumber,
             siteAddress: form.siteAddress,
+            externalInfo: form.externalInfo,
+            internalInfo: form.internalInfo,
             status: form.status,
             scheduledFor: null,
             scheduledTo: null,
@@ -1087,15 +1095,75 @@ export function CreateJobPage() {
         return (
           <article className="panel" style={{ padding: 24 }}>
             <form className="stack" onSubmit={handleSubmit}>
-              <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
-              <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
-              <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
-              <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
-              <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <TextField label="Working start time" onChange={(value) => setForm((current) => ({ ...current, scheduledStartTime: value }))} type="time" value={form.scheduledStartTime} />
-                <TextField label="Working finish time" onChange={(value) => setForm((current) => ({ ...current, scheduledEndTime: value }))} type="time" value={form.scheduledEndTime} />
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24, alignItems: "start" }}>
+                <div className="stack">
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 16 }}>Job details</div>
+                    <div className="stack">
+                      <TextField label="Title" onChange={(value) => setForm((current) => ({ ...current, title: value }))} value={form.title} />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <TextField label="Company job number" onChange={(value) => setForm((current) => ({ ...current, companyJobNumber: value }))} value={form.companyJobNumber} />
+                        <TextField label="Customer job number" onChange={(value) => setForm((current) => ({ ...current, customerJobNumber: value }))} value={form.customerJobNumber} />
+                      </div>
+                      <TextField label="Site address" onChange={(value) => setForm((current) => ({ ...current, siteAddress: value }))} value={form.siteAddress} />
+                      <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, status: value }))} options={[...JOB_STATUS_VALUES]} value={form.status} />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <TextField label="Working start time" onChange={(value) => setForm((current) => ({ ...current, scheduledStartTime: value }))} type="time" value={form.scheduledStartTime} />
+                        <TextField label="Working finish time" onChange={(value) => setForm((current) => ({ ...current, scheduledEndTime: value }))} type="time" value={form.scheduledEndTime} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 16 }}>External info</div>
+                    <div className="muted" style={{ marginBottom: 12 }}>This is visible to operatives on the job.</div>
+                    <TextAreaField
+                      label="External Info"
+                      onChange={(value) => setForm((current) => ({ ...current, externalInfo: value }))}
+                      value={form.externalInfo}
+                    />
+                  </div>
+
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 16 }}>Internal info</div>
+                    <div className="muted" style={{ marginBottom: 12 }}>Manager-only notes for planning, handover, and commercial detail.</div>
+                    <TextAreaField
+                      label="Internal Info"
+                      onChange={(value) => setForm((current) => ({ ...current, internalInfo: value }))}
+                      value={form.internalInfo}
+                    />
+                  </div>
+                </div>
+
+                <div className="stack">
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 16 }}>Job summary</div>
+                    <div className="stack" style={{ gap: 12 }}>
+                      <div>
+                        <div className="muted">Title</div>
+                        <div style={{ fontWeight: 700 }}>{form.title || "New job"}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Company job number</div>
+                        <div style={{ fontWeight: 700 }}>{form.companyJobNumber || "Not set"}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Customer job number</div>
+                        <div style={{ fontWeight: 700 }}>{form.customerJobNumber || "Not set"}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Status</div>
+                        <div style={{ fontWeight: 700 }}>{form.status}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Working hours</div>
+                        <div style={{ fontWeight: 700 }}>{form.scheduledStartTime} - {form.scheduledEndTime}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
+
               <div className="field">
                 <span>Schedule range</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
@@ -1184,7 +1252,7 @@ export function JobRecordPage({
   initialTab = "details",
   jobId
 }: Readonly<{
-  initialTab?: "details" | "schedule";
+  initialTab?: "details" | "external" | "internal" | "schedule";
   jobId: string;
 }>) {
   const [job, setJob] = useState<JobRecord | null>(null);
@@ -1192,7 +1260,7 @@ export function JobRecordPage({
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "schedule">(initialTab);
+  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule">(initialTab);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
@@ -1202,6 +1270,8 @@ export function JobRecordPage({
     companyJobNumber: string;
     customerJobNumber: string;
     siteAddress: string;
+    externalInfo: string;
+    internalInfo: string;
     status: string;
     scheduledStartTime: string;
     scheduledEndTime: string;
@@ -1212,6 +1282,8 @@ export function JobRecordPage({
     companyJobNumber: "",
     customerJobNumber: "",
     siteAddress: "",
+    externalInfo: "",
+    internalInfo: "",
     status: JOB_STATUS_VALUES[1],
     scheduledStartTime: "08:00",
     scheduledEndTime: "17:00",
@@ -1240,6 +1312,8 @@ export function JobRecordPage({
         companyJobNumber: nextJob.companyJobNumber,
         customerJobNumber: nextJob.customerJobNumber,
         siteAddress: nextJob.siteAddress,
+        externalInfo: nextJob.externalInfo ?? "",
+        internalInfo: nextJob.internalInfo ?? "",
         status: nextJob.status,
         scheduledStartTime: nextJob.scheduledStartTime ?? "08:00",
         scheduledEndTime: nextJob.scheduledEndTime ?? "17:00",
@@ -1358,6 +1432,8 @@ export function JobRecordPage({
         companyJobNumber: form.companyJobNumber,
         customerJobNumber: form.customerJobNumber,
         siteAddress: form.siteAddress,
+        externalInfo: form.externalInfo,
+        internalInfo: form.internalInfo,
         status: form.status,
         scheduledStartTime: form.scheduledStartTime || null,
         scheduledEndTime: form.scheduledEndTime || null,
@@ -1411,19 +1487,23 @@ export function JobRecordPage({
     <ProtectedWorkspace allow="tenant" description="Review a single job record and manage its scheduling." title={job ? job.title : "Job Record"}>
       {(session) => {
         const canManage = canManageWorkspace(session.user.role);
+        const visibleActiveTab = !canManage && activeTab === "internal" ? "external" : activeTab;
+        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule"; label: string }> = [
+          { key: "details" as const, label: "Details" },
+          { key: "external" as const, label: "External Info" },
+          ...(canManage ? [{ key: "internal" as const, label: "Internal Info" }] : []),
+          { key: "schedule" as const, label: "Schedule" }
+        ];
         return (
         <div className="stack">
           <ErrorText error={error} />
           {success ? <div className="panel" style={{ padding: 18, borderRadius: 18 }}>{success}</div> : null}
           <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
-              {[
-                { key: "details" as const, label: "Details" },
-                { key: "schedule" as const, label: "Schedule" }
-              ].map((tab) => (
+              {tabs.map((tab) => (
                 <button
                   key={tab.key}
-                  className={activeTab === tab.key ? "button" : "button button-subtle"}
+                  className={visibleActiveTab === tab.key ? "button" : "button button-subtle"}
                   onClick={() => setActiveTab(tab.key)}
                   style={{ borderRadius: 0, minWidth: 140 }}
                   type="button"
@@ -1433,7 +1513,7 @@ export function JobRecordPage({
               ))}
             </div>
             <div style={{ padding: 24 }}>
-              {activeTab === "details" ? (
+              {visibleActiveTab === "details" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
                   <div className="stack">
                     {canManage ? (
@@ -1476,7 +1556,71 @@ export function JobRecordPage({
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : null}
+
+              {visibleActiveTab === "external" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
+                  <div className="stack">
+                    {canManage ? (
+                      <>
+                        <TextAreaField
+                          label="External Info"
+                          onChange={(value) => setForm((current) => ({ ...current, externalInfo: value }))}
+                          value={form.externalInfo}
+                        />
+                        <button className="button" onClick={handleSave} type="button">Save External Info</button>
+                      </>
+                    ) : (
+                      <div className="panel" style={{ padding: 20, minHeight: 260, whiteSpace: "pre-wrap" }}>
+                        {form.externalInfo || "No external information has been added for this job yet."}
+                      </div>
+                    )}
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Visible to operatives</div>
+                    <div className="stack" style={{ gap: 12 }}>
+                      <div className="callout">Use this for site notes, work scope, traffic management instructions, and anything the crew needs on the day.</div>
+                      <div>
+                        <div className="muted">Current job</div>
+                        <div style={{ fontWeight: 700 }}>{form.companyJobNumber || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Site</div>
+                        <div style={{ fontWeight: 700 }}>{form.siteAddress || "Not set"}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {visibleActiveTab === "internal" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
+                  <div className="stack">
+                    <TextAreaField
+                      label="Internal Info"
+                      onChange={(value) => setForm((current) => ({ ...current, internalInfo: value }))}
+                      value={form.internalInfo}
+                    />
+                    <button className="button" onClick={handleSave} type="button">Save Internal Info</button>
+                  </div>
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Manager only</div>
+                    <div className="stack" style={{ gap: 12 }}>
+                      <div className="callout">Use this area for commercial notes, access issues, client sensitivities, and internal planning only.</div>
+                      <div>
+                        <div className="muted">Customer job number</div>
+                        <div style={{ fontWeight: 700 }}>{form.customerJobNumber || "Not set"}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Status</div>
+                        <div style={{ fontWeight: 700 }}>{form.status}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {visibleActiveTab === "schedule" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
                   <div className="stack">
                     {canManage ? (
@@ -1593,7 +1737,7 @@ export function JobRecordPage({
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

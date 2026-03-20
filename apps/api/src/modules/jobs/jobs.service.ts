@@ -10,11 +10,12 @@ export class JobsService {
 
   async list(user: JwtUser) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    return prisma.job.findMany({
+    const jobs = await prisma.job.findMany({
       where: this.isManager(user) ? undefined : { assignedOperativeIds: { has: user.sub } },
       include: { tasks: true },
       orderBy: { createdAt: "desc" }
     });
+    return jobs.map((job) => this.sanitizeJobForUser(job, user));
   }
 
   async get(user: JwtUser, jobId: string) {
@@ -32,7 +33,7 @@ export class JobsService {
       throw new ForbiddenException("You do not have access to this job.");
     }
 
-    return job;
+    return this.sanitizeJobForUser(job, user);
   }
 
   async create(user: JwtUser, dto: CreateJobDto) {
@@ -49,6 +50,8 @@ export class JobsService {
         companyJobNumber: dto.companyJobNumber,
         customerJobNumber: dto.customerJobNumber,
         siteAddress: dto.siteAddress,
+        externalInfo: dto.externalInfo ?? "",
+        internalInfo: dto.internalInfo ?? "",
         status: dto.status,
         scheduledFor: this.toDateBoundary(dto.scheduledFor, scheduledDays[0], "start"),
         scheduledTo: this.toDateBoundary(dto.scheduledTo, scheduledDays[scheduledDays.length - 1], "end"),
@@ -82,6 +85,8 @@ export class JobsService {
         companyJobNumber: dto.companyJobNumber ?? undefined,
         customerJobNumber: dto.customerJobNumber ?? undefined,
         siteAddress: dto.siteAddress ?? undefined,
+        externalInfo: dto.externalInfo ?? undefined,
+        internalInfo: dto.internalInfo ?? undefined,
         status: dto.status ?? undefined,
         scheduledFor: (dto.status === "CANCELLED")
           ? null
@@ -288,6 +293,21 @@ export class JobsService {
     if (!this.isManager(user)) {
       throw new ForbiddenException("You do not have permission to modify jobs.");
     }
+  }
+
+  private sanitizeJobForUser<
+    T extends {
+      internalInfo?: string | null;
+    }
+  >(job: T, user: JwtUser) {
+    if (this.isManager(user)) {
+      return job;
+    }
+
+    return {
+      ...job,
+      internalInfo: ""
+    };
   }
 
 }

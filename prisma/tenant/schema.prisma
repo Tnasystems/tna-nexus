@@ -28,6 +28,8 @@ model Job {
   companyJobNumber    String
   customerJobNumber   String
   siteAddress         String
+  externalInfo        String   @default("")
+  internalInfo        String   @default("")
   status              String
   scheduledFor        DateTime?
   scheduledTo         DateTime?

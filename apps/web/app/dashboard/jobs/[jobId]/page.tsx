@@ -9,7 +9,13 @@ export default async function DashboardJobRecordRoute({
 }>) {
   const { jobId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const initialTab = resolvedSearchParams?.tab === "schedule" ? "schedule" : "details";
+  const initialTab = resolvedSearchParams?.tab === "schedule"
+    ? "schedule"
+    : resolvedSearchParams?.tab === "external"
+    ? "external"
+    : resolvedSearchParams?.tab === "internal"
+    ? "internal"
+    : "details";
 
   return <JobRecordPage initialTab={initialTab} jobId={jobId} />;
 }

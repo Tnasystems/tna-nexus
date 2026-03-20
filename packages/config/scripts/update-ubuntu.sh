@@ -7,7 +7,9 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="${INSTALL_DIR:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
+DEFAULT_REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+DEFAULT_INSTALL_DIR="/var/www/tna-nexus"
+INSTALL_DIR="${INSTALL_DIR:-}"
 APP_USER="${APP_USER:-$USER}"
 GIT_PULL="${GIT_PULL:-yes}"
 RUN_PLATFORM_MIGRATION="${RUN_PLATFORM_MIGRATION:-yes}"
@@ -29,6 +31,27 @@ Optional environment variables:
   RESTART_NGINX=yes|no
 EOF
 }
+
+resolve_install_dir() {
+  if [[ -n "${INSTALL_DIR}" ]]; then
+    echo "${INSTALL_DIR}"
+    return 0
+  fi
+
+  if [[ -f "${DEFAULT_INSTALL_DIR}/.env" && -f "${DEFAULT_INSTALL_DIR}/package.json" ]]; then
+    echo "${DEFAULT_INSTALL_DIR}"
+    return 0
+  fi
+
+  if [[ -f "${PWD}/.env" && -f "${PWD}/package.json" ]]; then
+    echo "${PWD}"
+    return 0
+  fi
+
+  echo "${DEFAULT_REPO_ROOT}"
+}
+
+INSTALL_DIR="$(resolve_install_dir)"
 
 if [[ ! -f "${INSTALL_DIR}/package.json" ]]; then
   usage
@@ -66,6 +89,7 @@ if [[ -f "${INSTALL_DIR}/.env" ]]; then
   set +a
 else
   echo "Missing ${INSTALL_DIR}/.env"
+  echo "Tip: if your live install is elsewhere, run INSTALL_DIR=/your/install/path bash update.sh"
   exit 1
 fi
 

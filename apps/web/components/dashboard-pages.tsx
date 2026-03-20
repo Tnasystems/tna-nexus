@@ -1601,6 +1601,17 @@ function CalendarWorkspace({
     return jobs.filter((job) => (getWorkingAssignments(job)[day] ?? []).includes(userId));
   }
 
+  function hasCalendarConflict(job: JobRecord, day: string, userId?: string) {
+    const currentUsers = userId ? [userId] : (getWorkingAssignments(job)[day] ?? []);
+    return currentUsers.some((currentUserId) => (
+      jobs.some((candidate) => (
+        candidate.id !== job.id &&
+        (getWorkingAssignments(candidate)[day] ?? []).includes(currentUserId) &&
+        jobsOverlapByTime(job, candidate)
+      ))
+    ));
+  }
+
   const visibleJobsForBoard = selectedEmployeeId === "all"
     ? jobsForMonth
     : jobsForMonth.filter((job) =>
@@ -1829,7 +1840,7 @@ function CalendarWorkspace({
                                 event.preventDefault();
                                 beginBulkEdit(job);
                               }}
-                              style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey, user.id))}
+                              style={getJobVisualStyle(job, hasCalendarConflict(job, dayKey, user.id))}
                             >
                               <div className="schedule-job-chip-code">{job.companyJobNumber}</div>
                               <div className="schedule-job-chip-title">{job.title}</div>
@@ -1880,7 +1891,7 @@ function CalendarWorkspace({
                             <Link
                               className="jobs-board-chip"
                               href={jobDetailHref(job.id, "schedule")}
-                              style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey))}
+                              style={getJobVisualStyle(job, hasCalendarConflict(job, dayKey))}
                               title={`${job.companyJobNumber} - ${job.title}${job.scheduledStartTime && job.scheduledEndTime ? ` (${job.scheduledStartTime}-${job.scheduledEndTime})` : ""}`}
                             >
                               {job.companyJobNumber}

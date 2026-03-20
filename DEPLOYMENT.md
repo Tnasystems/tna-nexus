@@ -17,6 +17,12 @@ cd tna-nexus
 APP_USER=$USER bash packages/config/scripts/purge-ubuntu.sh
 ```
 
+If you want to update code later without touching your databases or uploads:
+```bash
+cd /var/www/tna-nexus
+bash update.sh
+```
+
 Short installer notes are in [INSTALL.md](C:\Users\m1x3d\OneDrive\Documents\TNA-Nexus\INSTALL.md).
 
 The rest of this file is the manual step-by-step fallback path.
@@ -320,18 +326,13 @@ sudo systemctl reload nginx
 ## 25. How to update later
 ```bash
 cd /var/www/tna-nexus
-git pull
-pnpm install
-pnpm --filter @tna-nexus/shared build
-pnpm --filter @tna-nexus/api prisma:generate
-pnpm --filter @tna-nexus/api prisma:migrate:platform
-pnpm --filter @tna-nexus/api build
-pnpm --filter @tna-nexus/web build
-mkdir -p /var/www/tna-nexus/apps/api/dist/generated
-ln -sfn /var/www/tna-nexus/apps/api/src/generated/platform-client /var/www/tna-nexus/apps/api/dist/generated/platform-client
-ln -sfn /var/www/tna-nexus/apps/api/src/generated/tenant-client /var/www/tna-nexus/apps/api/dist/generated/tenant-client
-sudo systemctl restart tna-nexus-api
-sudo systemctl restart tna-nexus-web
+bash update.sh
+```
+
+If you also want the script to pull from git first:
+```bash
+cd /var/www/tna-nexus
+GIT_PULL=yes bash update.sh
 ```
 
 ## 26. Backups

@@ -150,6 +150,18 @@ function getAssignedUsersForDay(job: JobRecord, day: string) {
   return getJobDailyAssignments(job)[day] ?? [];
 }
 
+function getScheduledDaysForJob(job: JobRecord) {
+  if ((job.scheduledDays ?? []).length > 0) {
+    return [...job.scheduledDays].sort();
+  }
+
+  if (!job.scheduledFor) {
+    return [];
+  }
+
+  return [new Date(job.scheduledFor).toISOString().slice(0, 10)];
+}
+
 function jobDetailHref(jobId: string, tab: "details" | "schedule" = "details") {
   return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
@@ -1464,7 +1476,7 @@ export function JobRecordPage({
 }
 
 export function CalendarPage() {
-  const { jobs, users, error } = useJobsAndUsers();
+  const { jobs, users, error, reload } = useJobsAndUsers();
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const current = new Date();
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
@@ -1480,6 +1492,7 @@ export function CalendarPage() {
           calendarMode={calendarMode}
           error={error}
           jobs={jobs}
+          reload={reload}
           session={session}
           setCalendarMonth={setCalendarMonth}
           setCalendarMode={setCalendarMode}
@@ -1495,6 +1508,7 @@ export function CalendarPage() {
 function CalendarWorkspace({
   session,
   jobs,
+  reload,
   users,
   error,
   calendarMonth,
@@ -1506,6 +1520,7 @@ function CalendarWorkspace({
 }: Readonly<{
   session: AppSession;
   jobs: JobRecord[];
+  reload: () => Promise<void>;
   users: UserRecord[];
   error: string | null;
   calendarMonth: string;
@@ -1518,6 +1533,12 @@ function CalendarWorkspace({
   const isManager = MANAGER_ROLES.has(session.user.role);
   const defaultEmployee = !isManager ? session.user.sub : "all";
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(defaultEmployee);
+  const [bulkEditJobId, setBulkEditJobId] = useState<string | null>(null);
+  const [bulkEditAssignments, setBulkEditAssignments] = useState<Record<string, string[]>>({});
+  const [bulkEditScheduledDays, setBulkEditScheduledDays] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
 
   const [year, month] = calendarMonth.split("-").map((part) => Number(part));
   const firstDayOfMonth = new Date(year, month - 1, 1);
@@ -1555,21 +1576,119 @@ function CalendarWorkspace({
     }
   }, [isManager, session.user.sub]);
 
+  useEffect(() => {
+    if (!bulkEditJobId) {
+      return;
+    }
+
+    const matchingJob = jobs.find((entry) => entry.id === bulkEditJobId);
+    if (!matchingJob) {
+      setBulkEditJobId(null);
+      setBulkEditAssignments({});
+      setBulkEditScheduledDays([]);
+    }
+  }, [bulkEditJobId, jobs]);
+
+  function getWorkingAssignments(job: JobRecord) {
+    if (job.id !== bulkEditJobId) {
+      return getJobDailyAssignments(job);
+    }
+
+    return bulkEditAssignments;
+  }
+
   function jobsForEmployeeOnDay(userId: string, day: string) {
-    return jobs.filter((job) => getAssignedUsersForDay(job, day).includes(userId));
+    return jobs.filter((job) => (getWorkingAssignments(job)[day] ?? []).includes(userId));
   }
 
   const visibleJobsForBoard = selectedEmployeeId === "all"
     ? jobsForMonth
     : jobsForMonth.filter((job) =>
-        Object.values(getJobDailyAssignments(job)).some((assignedUsers) => assignedUsers.includes(selectedEmployeeId))
+        Object.values(getWorkingAssignments(job)).some((assignedUsers) => assignedUsers.includes(selectedEmployeeId))
       );
 
   const showTeamWeek = isManager && selectedEmployeeId === "all" && calendarMode === "team-week";
+  const bulkEditJob = bulkEditJobId ? jobs.find((entry) => entry.id === bulkEditJobId) ?? null : null;
+
+  function beginBulkEdit(job: JobRecord) {
+    setBulkEditJobId(job.id);
+    setBulkEditAssignments(
+      Object.fromEntries(
+        getScheduledDaysForJob(job).map((day) => [day, [...getAssignedUsersForDay(job, day)]])
+      )
+    );
+    setBulkEditScheduledDays(getScheduledDaysForJob(job));
+    setBulkError(null);
+    setBulkSuccess(null);
+  }
+
+  function cancelBulkEdit() {
+    setBulkEditJobId(null);
+    setBulkEditAssignments({});
+    setBulkEditScheduledDays([]);
+    setBulkError(null);
+  }
+
+  function toggleBulkAssignment(job: JobRecord, userId: string, day: string) {
+    if (job.id !== bulkEditJobId) {
+      return;
+    }
+
+    setBulkError(null);
+    setBulkSuccess(null);
+    setBulkEditAssignments((current) => {
+      const dayAssignments = current[day] ?? [];
+      const nextAssignments = dayAssignments.includes(userId)
+        ? dayAssignments.filter((entry) => entry !== userId)
+        : [...dayAssignments, userId];
+
+      return {
+        ...current,
+        [day]: nextAssignments
+      };
+    });
+    setBulkEditScheduledDays((current) => (
+      current.includes(day) ? current : [...current, day].sort()
+    ));
+  }
+
+  async function saveBulkEdit() {
+    if (!bulkEditJob) {
+      return;
+    }
+
+    setBulkSaving(true);
+    setBulkError(null);
+    setBulkSuccess(null);
+
+    try {
+      const scheduledDays = [...bulkEditScheduledDays].sort();
+      await apiRequest(`jobs/${bulkEditJob.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          scheduledDays,
+          scheduledFor: scheduledDays[0] ? `${scheduledDays[0]}T00:00:00` : undefined,
+          scheduledTo: scheduledDays[scheduledDays.length - 1] ? `${scheduledDays[scheduledDays.length - 1]}T23:59:59` : undefined,
+          dailyAssignments: Object.fromEntries(
+            scheduledDays.map((day) => [day, bulkEditAssignments[day] ?? []])
+          )
+        })
+      });
+      setBulkSuccess("Job assignment changes saved.");
+      await reload();
+      cancelBulkEdit();
+    } catch (caughtError) {
+      setBulkError(caughtError instanceof Error ? caughtError.message : "Failed to save job assignment changes.");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
 
   return (
     <article className="panel" style={{ padding: 24 }}>
           <ErrorText error={error} />
+          <ErrorText error={bulkError} />
+          {bulkSuccess ? <div className="panel" style={{ padding: 18, borderRadius: 18, marginBottom: 16 }}>{bulkSuccess}</div> : null}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div>
               <h2 style={{ margin: 0 }}>Staff job calendar</h2>
@@ -1634,6 +1753,24 @@ function CalendarWorkspace({
               ) : null}
             </div>
           </div>
+          {showTeamWeek && isManager ? (
+            <div className="panel" style={{ padding: 16, marginTop: 18 }}>
+              {bulkEditJob ? (
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>Assignment mode: {bulkEditJob.companyJobNumber}</div>
+                    <div className="muted">Click any day/operative cell to add or remove this job there, then press Done.</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button className="button" disabled={bulkSaving} onClick={() => void saveBulkEdit()} type="button">Done</button>
+                    <button className="button button-subtle" disabled={bulkSaving} onClick={cancelBulkEdit} type="button">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="muted">Right-click a job on the Team Week board to start copy/paste assignment mode.</div>
+              )}
+            </div>
+          ) : null}
           {showTeamWeek ? (
             <div className="schedule-board-wrap" style={{ marginTop: 20 }}>
               <div className="schedule-board">
@@ -1662,6 +1799,14 @@ function CalendarWorkspace({
                         <div
                           key={`${user.id}-${dayKey}`}
                           className={`schedule-board-cell ${day.getDay() === 0 || day.getDay() === 6 ? "schedule-board-cell-weekend" : ""}`}
+                          onClick={() => {
+                            if (!bulkEditJob) {
+                              return;
+                            }
+
+                            toggleBulkAssignment(bulkEditJob, user.id, dayKey);
+                          }}
+                          style={bulkEditJob ? { cursor: "copy", outline: (getWorkingAssignments(bulkEditJob)[dayKey] ?? []).includes(user.id) ? "2px solid rgba(96, 165, 250, 0.65)" : "1px dashed rgba(148, 163, 184, 0.45)" } : undefined}
                         >
                           {dayJobs.length === 0 ? <div className="schedule-board-empty">-</div> : null}
                           {dayJobs.map((job) => (
@@ -1669,6 +1814,21 @@ function CalendarWorkspace({
                               key={job.id}
                               className="schedule-job-chip"
                               href={jobDetailHref(job.id, "schedule")}
+                              onClick={(event) => {
+                                if (!bulkEditJob) {
+                                  return;
+                                }
+
+                                event.preventDefault();
+                              }}
+                              onContextMenu={(event) => {
+                                if (!isManager) {
+                                  return;
+                                }
+
+                                event.preventDefault();
+                                beginBulkEdit(job);
+                              }}
                               style={getJobVisualStyle(job, hasJobConflict(job, jobs, dayKey, user.id))}
                             >
                               <div className="schedule-job-chip-code">{job.companyJobNumber}</div>

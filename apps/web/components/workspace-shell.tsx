@@ -60,22 +60,24 @@ export function WorkspaceShell({
       <div className="shell">
         <aside className="panel" style={{ padding: 24, position: "sticky", top: 24, alignSelf: "start" }}>
           <BrandLogo />
-          <div className="panel stack" style={{ marginTop: 24, padding: 18, borderRadius: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Shield size={18} color="var(--accent)" />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{session.user.email}</div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {session.user.role.replaceAll("_", " ").toLowerCase()}
+          {!isOperative ? (
+            <div className="panel stack" style={{ marginTop: 24, padding: 18, borderRadius: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Shield size={18} color="var(--accent)" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{session.user.email}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {session.user.role.replaceAll("_", " ").toLowerCase()}
+                  </div>
                 </div>
               </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Link className="badge" href="/">Home</Link>
+                <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a>
+                {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {!isOperative ? <Link className="badge" href="/">Home</Link> : null}
-              {!isOperative ? <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a> : null}
-              {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
-            </div>
-          </div>
+          ) : null}
           <div className="stack" style={{ marginTop: 28 }}>
             {nav.map((item) => {
               const active = pathname === item.href;

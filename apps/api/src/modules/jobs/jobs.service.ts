@@ -1,12 +1,18 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { JwtUser } from "@tna-nexus/shared";
 import { TenantAccessService } from "../../auth/tenant-access.service";
 import { CreateJobDto, UpdateJobDto } from "./jobs.dto";
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly tenantAccess: TenantAccessService) {}
+  constructor(
+    private readonly tenantAccess: TenantAccessService,
+    private readonly config: ConfigService
+  ) {}
 
   async list(user: JwtUser) {
     const { prisma } = await this.tenantAccess.getTenantContext(user);
@@ -113,6 +119,81 @@ export class JobsService {
         assignedOperativeIds: scheduling.assignedOperativeIds
       }
     });
+  }
+
+  async listDocuments(user: JwtUser, jobId: string) {
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const job = await this.getAccessibleJob(prisma, user, jobId);
+    void job;
+
+    return prisma.document.findMany({
+      where: {
+        jobId,
+        ...(this.isManager(user) ? undefined : { visibility: "EXTERNAL" })
+      },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async uploadDocument(
+    user: JwtUser,
+    jobId: string,
+    visibility: string,
+    file: { fileName: string; mimeType: string; buffer: Buffer }
+  ) {
+    this.ensureManager(user);
+    const normalizedVisibility = this.normalizeDocumentVisibility(visibility);
+    const { company, prisma } = await this.tenantAccess.getTenantContext(user);
+    await this.getAccessibleJob(prisma, user, jobId);
+
+    const id = randomUUID();
+    const safeName = this.sanitizeFileName(file.fileName, file.mimeType);
+    const dir = join(
+      process.cwd(),
+      this.config.getOrThrow<string>("UPLOAD_ROOT"),
+      company.slug,
+      "jobs",
+      jobId,
+      normalizedVisibility.toLowerCase()
+    );
+
+    await mkdir(dir, { recursive: true });
+
+    const filePath = join(dir, `${id}-${safeName}`);
+    await writeFile(filePath, file.buffer);
+
+    return prisma.document.create({
+      data: {
+        id,
+        name: safeName,
+        storagePath: filePath,
+        mimeType: file.mimeType || "application/octet-stream",
+        jobId,
+        visibility: normalizedVisibility
+      }
+    });
+  }
+
+  async downloadDocument(user: JwtUser, jobId: string, documentId: string) {
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    await this.getAccessibleJob(prisma, user, jobId);
+    const document = await prisma.document.findFirst({
+      where: {
+        id: documentId,
+        jobId,
+        ...(this.isManager(user) ? undefined : { visibility: "EXTERNAL" })
+      }
+    });
+
+    if (!document) {
+      throw new NotFoundException("Document not found.");
+    }
+
+    return {
+      fileName: document.name,
+      mimeType: document.mimeType,
+      buffer: await readFile(document.storagePath)
+    };
   }
 
   private buildScheduling(
@@ -293,6 +374,55 @@ export class JobsService {
     if (!this.isManager(user)) {
       throw new ForbiddenException("You do not have permission to modify jobs.");
     }
+  }
+
+  private async getAccessibleJob(
+    prisma: Awaited<ReturnType<TenantAccessService["getTenantContext"]>>["prisma"],
+    user: JwtUser,
+    jobId: string
+  ) {
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
+
+    if (!job) {
+      throw new NotFoundException("Job not found.");
+    }
+
+    if (!this.isManager(user) && !job.assignedOperativeIds.includes(user.sub)) {
+      throw new ForbiddenException("You do not have access to this job.");
+    }
+
+    return job;
+  }
+
+  private normalizeDocumentVisibility(value: string) {
+    const normalized = value.toUpperCase();
+    if (normalized !== "EXTERNAL" && normalized !== "INTERNAL") {
+      throw new BadRequestException("Document visibility must be EXTERNAL or INTERNAL.");
+    }
+
+    return normalized;
+  }
+
+  private sanitizeFileName(fileName: string, mimeType?: string) {
+    const cleaned = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    if (cleaned) {
+      return cleaned;
+    }
+
+    return `file${this.extensionFromMimeType(mimeType)}`;
+  }
+
+  private extensionFromMimeType(mimeType?: string) {
+    if (mimeType === "application/pdf") {
+      return ".pdf";
+    }
+
+    if (mimeType?.startsWith("image/")) {
+      const subtype = mimeType.split("/")[1];
+      return subtype ? `.${subtype.replace(/[^a-zA-Z0-9]+/g, "")}` : ".img";
+    }
+
+    return ".bin";
   }
 
   private sanitizeJobForUser<

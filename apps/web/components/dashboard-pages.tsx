@@ -198,6 +198,14 @@ interface TrainingRecord {
   certificateMimeType?: string;
 }
 
+interface JobDocumentRecord {
+  id: string;
+  name: string;
+  mimeType: string;
+  visibility?: string | null;
+  createdAt?: string;
+}
+
 function parseTrainingRecords(value: string | null | undefined) {
   if (!value) {
     return [] as TrainingRecord[];
@@ -1258,8 +1266,11 @@ export function JobRecordPage({
   const [job, setJob] = useState<JobRecord | null>(null);
   const [allJobs, setAllJobs] = useState<JobRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [documents, setDocuments] = useState<JobDocumentRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [uploadingDocumentArea, setUploadingDocumentArea] = useState<"EXTERNAL" | "INTERNAL" | null>(null);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule">(initialTab);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -1296,14 +1307,16 @@ export function JobRecordPage({
 
   async function load() {
     try {
-      const [nextJob, nextUsers, nextJobs] = await Promise.all([
+      const [nextJob, nextUsers, nextJobs, nextDocuments] = await Promise.all([
         apiRequest<JobRecord>(`jobs/${jobId}`),
         apiRequest<UserRecord[]>("users"),
-        apiRequest<JobRecord[]>("jobs")
+        apiRequest<JobRecord[]>("jobs"),
+        apiRequest<JobDocumentRecord[]>(`jobs/${jobId}/documents`)
       ]);
       setJob(nextJob);
       setUsers(nextUsers);
       setAllJobs(nextJobs);
+      setDocuments(nextDocuments);
       const scheduledDays = (nextJob.scheduledDays ?? []).length > 0
         ? [...nextJob.scheduledDays].sort()
         : [nextJob.scheduledFor ? new Date(nextJob.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
@@ -1483,14 +1496,54 @@ export function JobRecordPage({
     }
   }
 
+  async function handleUploadDocument(visibility: "EXTERNAL" | "INTERNAL", file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setUploadingDocumentArea(visibility);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      await apiRequest<JobDocumentRecord>(`jobs/${jobId}/documents/${visibility}`, {
+        method: "POST",
+        body: formData
+      });
+      setSuccess(visibility === "EXTERNAL" ? "External file uploaded." : "Internal file uploaded.");
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to upload file.");
+    } finally {
+      setUploadingDocumentArea(null);
+    }
+  }
+
+  async function handleOpenJobDocument(documentId: string, fileName: string) {
+    setOpeningDocumentId(documentId);
+    setError(null);
+
+    try {
+      await openProtectedFile(`jobs/${jobId}/documents/${documentId}/download`, fileName);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to open file.");
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  }
+
   return (
     <ProtectedWorkspace allow="tenant" description="Review a single job record and manage its scheduling." title={job ? job.title : "Job Record"}>
       {(session) => {
         const canManage = canManageWorkspace(session.user.role);
         const visibleActiveTab = !canManage && activeTab === "internal" ? "external" : activeTab;
+        const externalDocuments = documents.filter((document) => (document.visibility ?? "EXTERNAL") === "EXTERNAL");
+        const internalDocuments = documents.filter((document) => document.visibility === "INTERNAL");
         const tabs: Array<{ key: "details" | "external" | "internal" | "schedule"; label: string }> = [
           { key: "details" as const, label: "Details" },
-          { key: "external" as const, label: "External Info" },
+          { key: "external" as const, label: canManage ? "External Info" : "Information" },
           ...(canManage ? [{ key: "internal" as const, label: "Internal Info" }] : []),
           { key: "schedule" as const, label: "Schedule" }
         ];
@@ -1568,16 +1621,52 @@ export function JobRecordPage({
                           onChange={(value) => setForm((current) => ({ ...current, externalInfo: value }))}
                           value={form.externalInfo}
                         />
+                        <label className="field">
+                          <span>External files</span>
+                          <input
+                            className="input"
+                            disabled={uploadingDocumentArea === "EXTERNAL"}
+                            onChange={(event) => {
+                              const [file] = Array.from(event.target.files ?? []);
+                              void handleUploadDocument("EXTERNAL", file ?? null);
+                              event.currentTarget.value = "";
+                            }}
+                            type="file"
+                          />
+                        </label>
                         <button className="button" onClick={handleSave} type="button">Save External Info</button>
                       </>
                     ) : (
-                      <div className="panel" style={{ padding: 20, minHeight: 260, whiteSpace: "pre-wrap" }}>
-                        {form.externalInfo || "No external information has been added for this job yet."}
-                      </div>
+                      <>
+                        <div className="panel" style={{ padding: 20, minHeight: 260, whiteSpace: "pre-wrap" }}>
+                          {form.externalInfo || "No information has been added for this job yet."}
+                        </div>
+                      </>
                     )}
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>{canManage ? "External files" : "Files"}</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {externalDocuments.length === 0 ? <div className="muted">No external files attached.</div> : null}
+                        {externalDocuments.map((document) => (
+                          <div key={document.id} className="panel" style={{ padding: 14 }}>
+                            <div style={{ fontWeight: 700 }}>{document.name}</div>
+                            <div className="muted">{document.mimeType}</div>
+                            <button
+                              className="button button-subtle"
+                              disabled={openingDocumentId === document.id}
+                              onClick={() => void handleOpenJobDocument(document.id, document.name)}
+                              style={{ marginTop: 10 }}
+                              type="button"
+                            >
+                              Open File
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
-                    <div style={{ fontWeight: 800, marginBottom: 12 }}>Visible to operatives</div>
+                    <div style={{ fontWeight: 800, marginBottom: 12 }}>{canManage ? "Visible to operatives" : "Job summary"}</div>
                     <div className="stack" style={{ gap: 12 }}>
                       <div className="callout">Use this for site notes, work scope, traffic management instructions, and anything the crew needs on the day.</div>
                       <div>
@@ -1601,6 +1690,40 @@ export function JobRecordPage({
                       onChange={(value) => setForm((current) => ({ ...current, internalInfo: value }))}
                       value={form.internalInfo}
                     />
+                    <label className="field">
+                      <span>Internal files</span>
+                      <input
+                        className="input"
+                        disabled={uploadingDocumentArea === "INTERNAL"}
+                        onChange={(event) => {
+                          const [file] = Array.from(event.target.files ?? []);
+                          void handleUploadDocument("INTERNAL", file ?? null);
+                          event.currentTarget.value = "";
+                        }}
+                        type="file"
+                      />
+                    </label>
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Internal files</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {internalDocuments.length === 0 ? <div className="muted">No internal files attached.</div> : null}
+                        {internalDocuments.map((document) => (
+                          <div key={document.id} className="panel" style={{ padding: 14 }}>
+                            <div style={{ fontWeight: 700 }}>{document.name}</div>
+                            <div className="muted">{document.mimeType}</div>
+                            <button
+                              className="button button-subtle"
+                              disabled={openingDocumentId === document.id}
+                              onClick={() => void handleOpenJobDocument(document.id, document.name)}
+                              style={{ marginTop: 10 }}
+                              type="button"
+                            >
+                              Open File
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     <button className="button" onClick={handleSave} type="button">Save Internal Info</button>
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
@@ -1677,7 +1800,7 @@ export function JobRecordPage({
                         <button className="button button-subtle" onClick={addOperative} type="button">Assign Across Job</button>
                       </div>
                       ) : null}
-                      {overlapWarnings.length > 0 ? (
+                      {canManage && overlapWarnings.length > 0 ? (
                         <div className="error-banner">
                           {overlapWarnings.map((warning) => (
                             <div key={`${warning.day}-${warning.userId}-${warning.companyJobNumber}`}>

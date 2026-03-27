@@ -123,7 +123,16 @@ interface JobRecord {
   scheduledDays: string[];
   dailyAssignmentsJson: string;
   assignedOperativeIds: string[];
+  assignedVehicleIds: string[];
   tasks?: Array<{ id: string; title: string; status: string }>;
+}
+
+interface AssetRecord {
+  id: string;
+  name: string;
+  serialNumber: string;
+  kind?: string | null;
+  registrationNumber?: string | null;
 }
 
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
@@ -330,16 +339,19 @@ function hasJobConflict(job: JobRecord, allJobs: JobRecord[], day: string, userI
 function useJobsAndUsers() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     try {
-      const [nextJobs, nextUsers] = await Promise.all([
+      const [nextJobs, nextUsers, nextAssets] = await Promise.all([
         apiRequest<JobRecord[]>("jobs"),
-        apiRequest<UserRecord[]>("users")
+        apiRequest<UserRecord[]>("users"),
+        apiRequest<AssetRecord[]>("assets")
       ]);
       setJobs(nextJobs);
       setUsers(nextUsers);
+      setAssets(nextAssets);
       setError(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Failed to load jobs.");
@@ -350,7 +362,7 @@ function useJobsAndUsers() {
     void load();
   }, []);
 
-  return { jobs, users, error, setError, reload: load };
+  return { jobs, users, assets, error, setError, reload: load };
 }
 
 export function TenantOverviewPage() {
@@ -911,11 +923,12 @@ export function JobsPage() {
 
 export function CreateJobPage() {
   const router = useRouter();
-  const { jobs, users, error, reload } = useJobsAndUsers();
+  const { jobs, users, assets, error, reload } = useJobsAndUsers();
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [form, setForm] = useState<{
     title: string;
@@ -929,6 +942,7 @@ export function CreateJobPage() {
     scheduledEndTime: string;
     scheduledDays: string[];
     dailyAssignments: Record<string, string[]>;
+    assignedVehicleIds: string[];
   }>({
     title: "",
     companyJobNumber: "",
@@ -940,10 +954,12 @@ export function CreateJobPage() {
     scheduledStartTime: "08:00",
     scheduledEndTime: "17:00",
     scheduledDays: [],
-    dailyAssignments: {}
+    dailyAssignments: {},
+    assignedVehicleIds: []
   });
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
+  const vehicleOptions = assets.filter((asset) => (asset.kind ?? "GENERAL") === "VEHICLE");
 
   function buildDateRange(start: string, end: string) {
     if (!start || !end) {
@@ -1031,6 +1047,27 @@ export function CreateJobPage() {
     }));
   }
 
+  function addVehicle() {
+    if (!selectedVehicleId) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      assignedVehicleIds: current.assignedVehicleIds.includes(selectedVehicleId)
+        ? current.assignedVehicleIds
+        : [...current.assignedVehicleIds, selectedVehicleId]
+    }));
+    setSelectedVehicleId("");
+  }
+
+  function removeVehicle(vehicleId: string) {
+    setForm((current) => ({
+      ...current,
+      assignedVehicleIds: current.assignedVehicleIds.filter((id) => id !== vehicleId)
+    }));
+  }
+
   const assignmentWarnings = form.scheduledDays.flatMap((day) =>
     (form.dailyAssignments[day] ?? []).flatMap((userId) => {
       const conflicts = jobs.filter((job) =>
@@ -1067,6 +1104,44 @@ export function CreateJobPage() {
     })
   );
 
+  const vehicleWarnings = form.scheduledDays.flatMap((day) =>
+    form.assignedVehicleIds.flatMap((vehicleId) => {
+      const conflicts = jobs.filter((job) =>
+        (job.assignedVehicleIds ?? []).includes(vehicleId) &&
+        (job.scheduledDays ?? []).includes(day) &&
+        jobsOverlapByTime(
+          {
+            id: "new-job",
+            title: form.title,
+            companyJobNumber: form.companyJobNumber,
+            customerJobNumber: form.customerJobNumber,
+            siteAddress: form.siteAddress,
+            externalInfo: form.externalInfo,
+            internalInfo: form.internalInfo,
+            status: form.status,
+            scheduledFor: null,
+            scheduledTo: null,
+            scheduledStartTime: form.scheduledStartTime || null,
+            scheduledEndTime: form.scheduledEndTime || null,
+            scheduledDays: form.scheduledDays,
+            dailyAssignmentsJson: JSON.stringify(form.dailyAssignments),
+            assignedOperativeIds: [],
+            assignedVehicleIds: form.assignedVehicleIds
+          },
+          job
+        )
+      );
+
+      return conflicts.map((job) => ({
+        day,
+        vehicleId,
+        vehicleName: vehicleOptions.find((asset) => asset.id === vehicleId)?.name ?? vehicleId,
+        jobTitle: job.title,
+        companyJobNumber: job.companyJobNumber
+      }));
+    })
+  );
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(null);
@@ -1081,7 +1156,8 @@ export function CreateJobPage() {
           scheduledEndTime: form.scheduledEndTime || undefined,
           dailyAssignments: Object.fromEntries(
             form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
-          )
+          ),
+          assignedVehicleIds: form.assignedVehicleIds
         })
       });
       await reload();
@@ -1243,6 +1319,44 @@ export function CreateJobPage() {
                   ))}
                 </div>
               </div>
+              <div className="field">
+                <span>Assign vehicles</span>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                  <label className="field" style={{ flex: "1 1 260px" }}>
+                    <span>Select vehicle</span>
+                    <select className="input" onChange={(event) => setSelectedVehicleId(event.target.value)} value={selectedVehicleId}>
+                      <option value="">Choose a vehicle</option>
+                      {vehicleOptions.map((vehicle) => (
+                        <option key={vehicle.id} value={vehicle.id}>
+                          {vehicle.name} {vehicle.registrationNumber ? `(${vehicle.registrationNumber})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="button button-subtle" onClick={addVehicle} type="button">Add Vehicle</button>
+                </div>
+                {vehicleWarnings.length > 0 ? (
+                  <div className="error-banner">
+                    {vehicleWarnings.map((warning) => (
+                      <div key={`${warning.day}-${warning.vehicleId}-${warning.companyJobNumber}`}>
+                        {warning.vehicleName} already has {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {form.assignedVehicleIds.length === 0 ? <div className="muted">No vehicles assigned.</div> : null}
+                  {form.assignedVehicleIds.map((vehicleId) => {
+                    const vehicle = vehicleOptions.find((entry) => entry.id === vehicleId);
+                    return (
+                      <div key={vehicleId} className="assignment-pill">
+                        <span>{vehicle?.name ?? vehicleId}{vehicle?.registrationNumber ? ` (${vehicle.registrationNumber})` : ""}</span>
+                        <button className="assignment-pill-remove" onClick={() => removeVehicle(vehicleId)} type="button">Remove</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <button className="button" type="submit">Create Job</button>
                 <Link className="button button-subtle" href="/dashboard/jobs">Cancel</Link>
@@ -1267,6 +1381,7 @@ export function JobRecordPage({
   const [allJobs, setAllJobs] = useState<JobRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [documents, setDocuments] = useState<JobDocumentRecord[]>([]);
+  const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingDocumentArea, setUploadingDocumentArea] = useState<"EXTERNAL" | "INTERNAL" | null>(null);
@@ -1276,6 +1391,7 @@ export function JobRecordPage({
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -1288,6 +1404,7 @@ export function JobRecordPage({
     scheduledEndTime: string;
     scheduledDays: string[];
     dailyAssignments: Record<string, string[]>;
+    assignedVehicleIds: string[];
   }>({
     title: "",
     companyJobNumber: "",
@@ -1299,24 +1416,28 @@ export function JobRecordPage({
     scheduledStartTime: "08:00",
     scheduledEndTime: "17:00",
     scheduledDays: [] as string[],
-    dailyAssignments: {} as Record<string, string[]>
+    dailyAssignments: {} as Record<string, string[]>,
+    assignedVehicleIds: [] as string[]
   });
 
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
+  const vehicleOptions = assets.filter((asset) => (asset.kind ?? "GENERAL") === "VEHICLE");
 
   async function load() {
     try {
-      const [nextJob, nextUsers, nextJobs, nextDocuments] = await Promise.all([
+      const [nextJob, nextUsers, nextJobs, nextDocuments, nextAssets] = await Promise.all([
         apiRequest<JobRecord>(`jobs/${jobId}`),
         apiRequest<UserRecord[]>("users"),
         apiRequest<JobRecord[]>("jobs"),
-        apiRequest<JobDocumentRecord[]>(`jobs/${jobId}/documents`)
+        apiRequest<JobDocumentRecord[]>(`jobs/${jobId}/documents`),
+        apiRequest<AssetRecord[]>("assets")
       ]);
       setJob(nextJob);
       setUsers(nextUsers);
       setAllJobs(nextJobs);
       setDocuments(nextDocuments);
+      setAssets(nextAssets);
       const scheduledDays = (nextJob.scheduledDays ?? []).length > 0
         ? [...nextJob.scheduledDays].sort()
         : [nextJob.scheduledFor ? new Date(nextJob.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
@@ -1333,7 +1454,8 @@ export function JobRecordPage({
         scheduledDays,
         dailyAssignments: Object.fromEntries(
           scheduledDays.map((day) => [day, getAssignedUsersForDay(nextJob, day)])
-        )
+        ),
+        assignedVehicleIds: nextJob.assignedVehicleIds ?? []
       });
       setRangeStart(scheduledDays[0] ?? "");
       setRangeEnd(scheduledDays[scheduledDays.length - 1] ?? "");
@@ -1433,6 +1555,27 @@ export function JobRecordPage({
     }));
   }
 
+  function addVehicle() {
+    if (!selectedVehicleId) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      assignedVehicleIds: current.assignedVehicleIds.includes(selectedVehicleId)
+        ? current.assignedVehicleIds
+        : [...current.assignedVehicleIds, selectedVehicleId]
+    }));
+    setSelectedVehicleId("");
+  }
+
+  function removeVehicle(vehicleId: string) {
+    setForm((current) => ({
+      ...current,
+      assignedVehicleIds: current.assignedVehicleIds.filter((id) => id !== vehicleId)
+    }));
+  }
+
   const overlapWarnings = form.scheduledDays.flatMap((day) =>
     (form.dailyAssignments[day] ?? []).flatMap((userId) => {
       if (!job) {
@@ -1452,7 +1595,8 @@ export function JobRecordPage({
         scheduledEndTime: form.scheduledEndTime || null,
         scheduledDays: form.scheduledDays,
         dailyAssignmentsJson: JSON.stringify(form.dailyAssignments),
-        assignedOperativeIds: [...new Set(Object.values(form.dailyAssignments).flat())]
+        assignedOperativeIds: [...new Set(Object.values(form.dailyAssignments).flat())],
+        assignedVehicleIds: form.assignedVehicleIds
       };
 
       const conflicts = allJobs.filter((candidate) =>
@@ -1470,7 +1614,48 @@ export function JobRecordPage({
       }));
     })
   );
+  const vehicleOverlapWarnings = form.scheduledDays.flatMap((day) =>
+    form.assignedVehicleIds.flatMap((vehicleId) => {
+      if (!job) {
+        return [];
+      }
+
+      const conflicts = allJobs.filter((candidate) =>
+        candidate.id !== job.id &&
+        (candidate.assignedVehicleIds ?? []).includes(vehicleId) &&
+        (candidate.scheduledDays ?? []).includes(day) &&
+        jobsOverlapByTime(
+          {
+            ...job,
+            title: form.title,
+            companyJobNumber: form.companyJobNumber,
+            customerJobNumber: form.customerJobNumber,
+            siteAddress: form.siteAddress,
+            externalInfo: form.externalInfo,
+            internalInfo: form.internalInfo,
+            status: form.status,
+            scheduledStartTime: form.scheduledStartTime || null,
+            scheduledEndTime: form.scheduledEndTime || null,
+            scheduledDays: form.scheduledDays,
+            dailyAssignmentsJson: JSON.stringify(form.dailyAssignments),
+            assignedOperativeIds: [...new Set(Object.values(form.dailyAssignments).flat())],
+            assignedVehicleIds: form.assignedVehicleIds
+          },
+          candidate
+        )
+      );
+
+      return conflicts.map((candidate) => ({
+        day,
+        vehicleId,
+        vehicleName: vehicleOptions.find((asset) => asset.id === vehicleId)?.name ?? vehicleId,
+        jobTitle: candidate.title,
+        companyJobNumber: candidate.companyJobNumber
+      }));
+    })
+  );
   void overlapWarnings;
+  void vehicleOverlapWarnings;
 
   async function handleSave() {
     setError(null);
@@ -1486,7 +1671,8 @@ export function JobRecordPage({
           scheduledEndTime: form.scheduledEndTime || undefined,
           dailyAssignments: Object.fromEntries(
             form.scheduledDays.map((day) => [day, form.dailyAssignments[day] ?? []])
-          )
+          ),
+          assignedVehicleIds: form.assignedVehicleIds
         })
       });
       setSuccess("Job updated successfully.");
@@ -1826,6 +2012,46 @@ export function JobRecordPage({
                         ))}
                       </div>
                     </div>
+                    <div className="field">
+                      <span>Assigned vehicles</span>
+                      {canManage ? (
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                        <label className="field" style={{ flex: "1 1 260px" }}>
+                          <span>Select vehicle</span>
+                          <select className="input" onChange={(event) => setSelectedVehicleId(event.target.value)} value={selectedVehicleId}>
+                            <option value="">Choose a vehicle</option>
+                            {vehicleOptions.map((vehicle) => (
+                              <option key={vehicle.id} value={vehicle.id}>
+                                {vehicle.name} {vehicle.registrationNumber ? `(${vehicle.registrationNumber})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button className="button button-subtle" onClick={addVehicle} type="button">Assign Vehicle</button>
+                      </div>
+                      ) : null}
+                      {canManage && vehicleOverlapWarnings.length > 0 ? (
+                        <div className="error-banner">
+                          {vehicleOverlapWarnings.map((warning) => (
+                            <div key={`${warning.day}-${warning.vehicleId}-${warning.companyJobNumber}`}>
+                              {warning.vehicleName} overlaps with {warning.companyJobNumber} ({warning.jobTitle}) on {new Date(`${warning.day}T00:00:00`).toLocaleDateString()}.
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {form.assignedVehicleIds.length === 0 ? <div className="muted">No vehicles assigned.</div> : null}
+                        {form.assignedVehicleIds.map((vehicleId) => {
+                          const vehicle = vehicleOptions.find((entry) => entry.id === vehicleId);
+                          return (
+                            <div key={vehicleId} className="assignment-pill">
+                              <span>{vehicle?.name ?? vehicleId}{vehicle?.registrationNumber ? ` (${vehicle.registrationNumber})` : ""}</span>
+                              {canManage ? <button className="assignment-pill-remove" onClick={() => removeVehicle(vehicleId)} type="button">Remove</button> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                     {canManage ? <button className="button" onClick={handleSave} type="button">Save Schedule</button> : null}
                   </div>
                   <div className="panel" style={{ padding: 20 }}>
@@ -1855,6 +2081,20 @@ export function JobRecordPage({
                               <div className="muted">{task.status}</div>
                             </div>
                           ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="muted">Vehicles</div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {form.assignedVehicleIds.length === 0 ? <div>No vehicles assigned</div> : null}
+                          {form.assignedVehicleIds.map((vehicleId) => {
+                            const vehicle = vehicleOptions.find((entry) => entry.id === vehicleId);
+                            return (
+                              <div key={vehicleId}>
+                                {vehicle?.name ?? vehicleId}{vehicle?.registrationNumber ? ` (${vehicle.registrationNumber})` : ""}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -1940,6 +2180,7 @@ function CalendarWorkspace({
   const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeUsers = users.filter((user) => user.role === "OPERATIVE");
+  const boardUsers = isManager ? operativeUsers : operativeUsers.filter((user) => user.id === session.user.sub);
   const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
   const currentWeekStart = startOfWeek(new Date(`${weekFocusDate}T00:00:00`));
   const boardDays = Array.from({ length: 7 }, (_, index) => {
@@ -1997,10 +2238,23 @@ function CalendarWorkspace({
 
   function hasCalendarConflict(job: JobRecord, day: string, userId?: string) {
     const currentUsers = userId ? [userId] : (getWorkingAssignments(job)[day] ?? []);
-    return currentUsers.some((currentUserId) => (
+    const operativeConflict = currentUsers.some((currentUserId) => (
       jobs.some((candidate) => (
         candidate.id !== job.id &&
         (getWorkingAssignments(candidate)[day] ?? []).includes(currentUserId) &&
+        jobsOverlapByTime(job, candidate)
+      ))
+    ));
+
+    if (operativeConflict) {
+      return true;
+    }
+
+    return (job.assignedVehicleIds ?? []).some((vehicleId) => (
+      jobs.some((candidate) => (
+        candidate.id !== job.id &&
+        (candidate.assignedVehicleIds ?? []).includes(vehicleId) &&
+        (candidate.scheduledDays ?? []).includes(day) &&
         jobsOverlapByTime(job, candidate)
       ))
     ));
@@ -2012,7 +2266,7 @@ function CalendarWorkspace({
         Object.values(getWorkingAssignments(job)).some((assignedUsers) => assignedUsers.includes(selectedEmployeeId))
       );
 
-  const showTeamWeek = isManager && selectedEmployeeId === "all" && calendarMode === "team-week";
+  const showTeamWeek = !isManager || (selectedEmployeeId === "all" && calendarMode === "team-week");
   const bulkEditJob = bulkEditJobId ? jobs.find((entry) => entry.id === bulkEditJobId) ?? null : null;
 
   function beginBulkEdit(job: JobRecord) {
@@ -2191,7 +2445,7 @@ function CalendarWorkspace({
                     <div>{day.getDate()}</div>
                   </div>
                 ))}
-                {operativeUsers.map((user) => (
+                {boardUsers.map((user) => (
                   <Fragment key={user.id}>
                     <div className="schedule-board-user">
                       <div className="schedule-board-user-name">{user.fullName}</div>
@@ -2983,6 +3237,78 @@ export const AssetsPage = createCrudPage({
     </>
   )
 });
+
+export function VehiclesPage() {
+  const [vehicles, setVehicles] = useState<AssetRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", serialNumber: "", registrationNumber: "" });
+
+  async function load() {
+    try {
+      const items = await apiRequest<AssetRecord[]>("assets");
+      setVehicles(items.filter((item) => (item.kind ?? "GENERAL") === "VEHICLE"));
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to load vehicles.");
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      await apiRequest("assets", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          kind: "VEHICLE"
+        })
+      });
+      setForm({ name: "", serialNumber: "", registrationNumber: "" });
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to create vehicle.");
+    }
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Manage company vehicles and keep them ready for job allocation." title="Vehicles">
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        if (!canManage) {
+          return <div className="panel" style={{ padding: 24 }}>Only managers can manage vehicles.</div>;
+        }
+
+        return (
+          <PanelGrid>
+            <article className="panel" style={{ padding: 24 }}>
+              <h2 style={{ marginTop: 0 }}>Add vehicle</h2>
+              <form className="stack" onSubmit={handleSubmit}>
+                <TextField label="Vehicle name" onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
+                <TextField label="Fleet serial" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
+                <TextField label="Registration" onChange={(value) => setForm((current) => ({ ...current, registrationNumber: value }))} value={form.registrationNumber} />
+                <button className="button" type="submit">Create Vehicle</button>
+              </form>
+              <ErrorText error={error} />
+            </article>
+            <article className="panel" style={{ padding: 24 }}>
+              <h2 style={{ marginTop: 0 }}>Fleet</h2>
+              <div className="stack">
+                {vehicles.map((vehicle) => (
+                  <div key={vehicle.id} className="panel" style={{ padding: 16 }}>
+                    <div style={{ fontWeight: 700 }}>{vehicle.name}</div>
+                    <div className="muted">{vehicle.registrationNumber || vehicle.serialNumber}</div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </PanelGrid>
+        );
+      }}
+    </ProtectedWorkspace>
+  );
+}
 
 export function DocumentsPage() {
   const [documents, setDocuments] = useState<Array<Record<string, unknown>>>([]);

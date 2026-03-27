@@ -11,6 +11,7 @@ const tenantNav = [
   { label: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
   { label: "Jobs", href: "/dashboard/jobs", icon: BriefcaseBusiness },
   { label: "Team", href: "/dashboard/users", icon: Users },
+  { label: "Vehicles", href: "/dashboard/vehicles", icon: Wrench },
   { label: "Forms", href: "/dashboard/forms", icon: ClipboardCheck },
   { label: "Assets", href: "/dashboard/assets", icon: Wrench },
   { label: "Documents", href: "/dashboard/documents", icon: FileText },

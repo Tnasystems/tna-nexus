@@ -18,7 +18,10 @@ export class AssetsController {
   }
 
   @Post()
-  create(@CurrentUser() user: JwtUser, @Body() body: { name: string; serialNumber: string }) {
+  create(
+    @CurrentUser() user: JwtUser,
+    @Body() body: { name: string; serialNumber: string; kind?: string; registrationNumber?: string }
+  ) {
     return this.service.create(user, body);
   }
 }

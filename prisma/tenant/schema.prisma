@@ -38,6 +38,7 @@ model Job {
   scheduledDays       String[]
   dailyAssignmentsJson String   @default("{}")
   assignedOperativeIds String[]
+  assignedVehicleIds   String[]
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   tasks               Task[]
@@ -74,6 +75,8 @@ model Asset {
   id           String   @id
   name         String
   serialNumber String
+  kind         String   @default("GENERAL")
+  registrationNumber String?
   createdAt    DateTime @default(now())
 }
 

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS "Job" (
   "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "dailyAssignmentsJson" TEXT NOT NULL DEFAULT '{}',
   "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "assignedVehicleIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -43,6 +44,7 @@ ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledEndTime" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "scheduledDays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "dailyAssignmentsJson" TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "assignedOperativeIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "assignedVehicleIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 UPDATE "Job" SET "companyJobNumber" = COALESCE("companyJobNumber", "id") WHERE "companyJobNumber" IS NULL;
 UPDATE "Job" SET "customerJobNumber" = COALESCE("customerJobNumber", "id") WHERE "customerJobNumber" IS NULL;
 ALTER TABLE "Job" ALTER COLUMN "companyJobNumber" SET NOT NULL;
@@ -76,8 +78,25 @@ CREATE TABLE IF NOT EXISTS "Asset" (
   "id" TEXT PRIMARY KEY,
   "name" TEXT NOT NULL,
   "serialNumber" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'GENERAL',
+  "registrationNumber" TEXT,
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT 'GENERAL';
+ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "registrationNumber" TEXT;
+
+INSERT INTO "Asset" ("id", "name", "serialNumber", "kind", "registrationNumber")
+SELECT 'vehicle-transit-01', 'Ford Transit 350', 'VH-001', 'VEHICLE', 'YN24 TNA'
+WHERE NOT EXISTS (SELECT 1 FROM "Asset" WHERE "id" = 'vehicle-transit-01');
+
+INSERT INTO "Asset" ("id", "name", "serialNumber", "kind", "registrationNumber")
+SELECT 'vehicle-vivaro-01', 'Vauxhall Vivaro', 'VH-002', 'VEHICLE', 'YN24 RTC'
+WHERE NOT EXISTS (SELECT 1 FROM "Asset" WHERE "id" = 'vehicle-vivaro-01');
+
+INSERT INTO "Asset" ("id", "name", "serialNumber", "kind", "registrationNumber")
+SELECT 'vehicle-crafter-01', 'VW Crafter', 'VH-003', 'VEHICLE', 'YN24 JOB'
+WHERE NOT EXISTS (SELECT 1 FROM "Asset" WHERE "id" = 'vehicle-crafter-01');
 
 CREATE TABLE IF NOT EXISTS "Document" (
   "id" TEXT PRIMARY KEY,

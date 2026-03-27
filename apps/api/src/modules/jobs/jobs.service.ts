@@ -45,7 +45,7 @@ export class JobsService {
   async create(user: JwtUser, dto: CreateJobDto) {
     this.ensureManager(user);
     const { prisma } = await this.tenantAccess.getTenantContext(user);
-    const { scheduledDays, dailyAssignments, assignedOperativeIds } = this.normalizeAssignmentsForStatus(
+    const { scheduledDays, dailyAssignments, assignedOperativeIds, assignedVehicleIds } = this.normalizeAssignmentsForStatus(
       dto.status,
       this.buildScheduling(dto)
     );
@@ -65,7 +65,8 @@ export class JobsService {
         scheduledEndTime: dto.scheduledEndTime ?? null,
         scheduledDays,
         dailyAssignmentsJson: JSON.stringify(dailyAssignments),
-        assignedOperativeIds
+        assignedOperativeIds,
+        assignedVehicleIds
       }
     });
   }
@@ -116,7 +117,8 @@ export class JobsService {
           : dto.dailyAssignments === undefined && dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
           ? undefined
           : JSON.stringify(scheduling.dailyAssignments),
-        assignedOperativeIds: scheduling.assignedOperativeIds
+        assignedOperativeIds: scheduling.assignedOperativeIds,
+        assignedVehicleIds: scheduling.assignedVehicleIds
       }
     });
   }
@@ -197,13 +199,14 @@ export class JobsService {
   }
 
   private buildScheduling(
-    dto: Pick<CreateJobDto, "scheduledDays" | "scheduledFor" | "scheduledTo" | "assignedOperativeIds" | "dailyAssignments">,
+    dto: Pick<CreateJobDto, "scheduledDays" | "scheduledFor" | "scheduledTo" | "assignedOperativeIds" | "assignedVehicleIds" | "dailyAssignments">,
     existing?: {
       scheduledDays: string[];
       scheduledFor: Date | null;
       scheduledTo: Date | null;
       dailyAssignmentsJson: string;
       assignedOperativeIds: string[];
+      assignedVehicleIds: string[];
     }
   ) {
     const baseScheduledDays = dto.scheduledDays === undefined && dto.scheduledFor === undefined && dto.scheduledTo === undefined
@@ -223,13 +226,16 @@ export class JobsService {
     const assignedOperativeIds = [...new Set(
       Object.values(dailyAssignments).flat()
     )];
+    const assignedVehicleIds = [...new Set(
+      dto.assignedVehicleIds ?? existing?.assignedVehicleIds ?? []
+    )];
 
-    return { scheduledDays, dailyAssignments, assignedOperativeIds };
+    return { scheduledDays, dailyAssignments, assignedOperativeIds, assignedVehicleIds };
   }
 
   private normalizeAssignmentsForStatus(
     status: string,
-    scheduling: { scheduledDays: string[]; dailyAssignments: Record<string, string[]>; assignedOperativeIds: string[] }
+    scheduling: { scheduledDays: string[]; dailyAssignments: Record<string, string[]>; assignedOperativeIds: string[]; assignedVehicleIds: string[] }
   ) {
     if (status === "ON_HOLD") {
       return {
@@ -237,7 +243,8 @@ export class JobsService {
         dailyAssignments: Object.fromEntries(
           scheduling.scheduledDays.map((day) => [day, []])
         ) as Record<string, string[]>,
-        assignedOperativeIds: []
+        assignedOperativeIds: [],
+        assignedVehicleIds: []
       };
     }
 
@@ -245,7 +252,8 @@ export class JobsService {
       return {
         scheduledDays: [],
         dailyAssignments: {},
-        assignedOperativeIds: []
+        assignedOperativeIds: [],
+        assignedVehicleIds: []
       };
     }
 

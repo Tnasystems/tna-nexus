@@ -67,6 +67,12 @@ export class CreateJobDto {
   @IsString({ each: true })
   assignedOperativeIds?: string[];
 
+  @ApiProperty({ type: [String], required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  assignedVehicleIds?: string[];
+
   @ApiProperty({
     required: false,
     type: Object,

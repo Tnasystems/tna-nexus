@@ -1088,7 +1088,8 @@ export function CreateJobPage() {
             scheduledEndTime: form.scheduledEndTime || null,
             scheduledDays: form.scheduledDays,
             dailyAssignmentsJson: JSON.stringify(form.dailyAssignments),
-            assignedOperativeIds: []
+            assignedOperativeIds: [],
+            assignedVehicleIds: form.assignedVehicleIds
           },
           job
         )

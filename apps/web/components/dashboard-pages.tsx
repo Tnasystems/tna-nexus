@@ -116,6 +116,10 @@ interface JobRecord {
   externalInfo?: string | null;
   internalInfo?: string | null;
   status: string;
+  quoteStatus?: string | null;
+  quotationJson?: string | null;
+  quotationRevisionsJson?: string | null;
+  finalMeasureJson?: string | null;
   scheduledFor: string | null;
   scheduledTo: string | null;
   scheduledStartTime: string | null;
@@ -132,7 +136,12 @@ interface AssetRecord {
   name: string;
   serialNumber: string;
   kind?: string | null;
+  assetStatus?: string | null;
   registrationNumber?: string | null;
+  notes?: string | null;
+  lastServicedAt?: string | null;
+  nextServiceDueAt?: string | null;
+  updatedAt?: string | null;
 }
 
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
@@ -190,7 +199,7 @@ function getScheduledDaysForJob(job: JobRecord) {
   return [new Date(job.scheduledFor).toISOString().slice(0, 10)];
 }
 
-function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" = "details") {
+function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" | "quotation" = "details") {
   return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
 
@@ -226,6 +235,127 @@ function parseTrainingRecords(value: string | null | undefined) {
   } catch {
     return [];
   }
+}
+
+interface QuoteLineItem {
+  id: string;
+  title: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+}
+
+interface QuotationRevision {
+  id: string;
+  label: string;
+  createdAt: string;
+  note: string;
+  totalAmount: string;
+  items: QuoteLineItem[];
+}
+
+interface QuotationRecord {
+  reference: string;
+  scope: string;
+  exclusions: string;
+  assumptions: string;
+  totalAmount: string;
+  revisionNotes: string;
+  items: QuoteLineItem[];
+}
+
+interface FinalMeasureRecord {
+  measuredBy: string;
+  measuredOn: string;
+  summary: string;
+  totalMeasuredValue: string;
+}
+
+function createEmptyQuoteItem(): QuoteLineItem {
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    description: "",
+    quantity: "1",
+    unit: "item",
+    unitPrice: "0.00"
+  };
+}
+
+function createEmptyQuotation(): QuotationRecord {
+  return {
+    reference: "",
+    scope: "",
+    exclusions: "",
+    assumptions: "",
+    totalAmount: "",
+    revisionNotes: "",
+    items: [createEmptyQuoteItem()]
+  };
+}
+
+function createEmptyFinalMeasure(): FinalMeasureRecord {
+  return {
+    measuredBy: "",
+    measuredOn: "",
+    summary: "",
+    totalMeasuredValue: ""
+  };
+}
+
+function parseJsonObject<T>(value: string | null | undefined, fallback: T) {
+  if (!value) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as T;
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function parseQuotation(value: string | null | undefined) {
+  const parsed = parseJsonObject<Partial<QuotationRecord>>(value, {});
+  const items = Array.isArray(parsed.items) && parsed.items.length > 0
+    ? parsed.items.map((item) => ({
+      id: typeof item?.id === "string" && item.id ? item.id : crypto.randomUUID(),
+      title: typeof item?.title === "string" ? item.title : "",
+      description: typeof item?.description === "string" ? item.description : "",
+      quantity: typeof item?.quantity === "string" ? item.quantity : "1",
+      unit: typeof item?.unit === "string" ? item.unit : "item",
+      unitPrice: typeof item?.unitPrice === "string" ? item.unitPrice : "0.00"
+    }))
+    : [createEmptyQuoteItem()];
+
+  return {
+    ...createEmptyQuotation(),
+    ...parsed,
+    items
+  };
+}
+
+function parseQuotationRevisions(value: string | null | undefined) {
+  const parsed = parseJsonObject<QuotationRevision[]>(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function parseFinalMeasure(value: string | null | undefined) {
+  return {
+    ...createEmptyFinalMeasure(),
+    ...parseJsonObject<Partial<FinalMeasureRecord>>(value, {})
+  };
+}
+
+function formatDateLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not set";
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
 async function openProtectedFile(path: string, fallbackFileName: string) {
@@ -910,6 +1040,11 @@ export function JobsPage() {
                         ? [...new Set(getScheduledDaysForJob(job).flatMap((day) => getAssignedUsersForDay(job, day)))].map((id) => usersById.get(id)?.fullName ?? id).join(", ")
                         : "Unassigned"}
                     </div>
+                    {canManage ? (
+                      <div className="muted">
+                        Quote: {job.quoteStatus?.replaceAll("_", " ") || "Not started"}
+                      </div>
+                    ) : null}
                   </Link>
                 ))}
               </div>
@@ -930,6 +1065,8 @@ export function CreateJobPage() {
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
+  const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -1151,6 +1288,10 @@ export function CreateJobPage() {
         method: "POST",
         body: JSON.stringify({
           ...form,
+          quoteStatus: quotation.totalAmount ? "DRAFT" : "NOT_STARTED",
+          quotation,
+          quotationRevisions: [],
+          finalMeasure,
           scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
           scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
           scheduledStartTime: form.scheduledStartTime || undefined,
@@ -1218,6 +1359,27 @@ export function CreateJobPage() {
                       value={form.internalInfo}
                     />
                   </div>
+
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 16 }}>Quotation</div>
+                    <div className="stack">
+                      <TextField label="Quotation reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
+                      <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
+                      <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
+                      <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
+                      <TextField label="Quoted total" onChange={(value) => setQuotation((current) => ({ ...current, totalAmount: value }))} value={quotation.totalAmount} />
+                    </div>
+                  </div>
+
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 16 }}>Final measure</div>
+                    <div className="stack">
+                      <TextField label="Measured by" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredBy: value }))} value={finalMeasure.measuredBy} />
+                      <TextField label="Measured on" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredOn: value }))} type="date" value={finalMeasure.measuredOn} />
+                      <TextAreaField label="Measure summary" onChange={(value) => setFinalMeasure((current) => ({ ...current, summary: value }))} value={finalMeasure.summary} />
+                      <TextField label="Measured total value" onChange={(value) => setFinalMeasure((current) => ({ ...current, totalMeasuredValue: value }))} value={finalMeasure.totalMeasuredValue} />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="stack">
@@ -1241,8 +1403,16 @@ export function CreateJobPage() {
                         <div style={{ fontWeight: 700 }}>{form.status}</div>
                       </div>
                       <div>
+                        <div className="muted">Quote status</div>
+                        <div style={{ fontWeight: 700 }}>{quotation.totalAmount ? "DRAFT" : "NOT STARTED"}</div>
+                      </div>
+                      <div>
                         <div className="muted">Working hours</div>
                         <div style={{ fontWeight: 700 }}>{form.scheduledStartTime} - {form.scheduledEndTime}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Quoted total</div>
+                        <div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div>
                       </div>
                     </div>
                   </div>
@@ -1375,7 +1545,7 @@ export function JobRecordPage({
   initialTab = "details",
   jobId
 }: Readonly<{
-  initialTab?: "details" | "external" | "internal" | "schedule";
+  initialTab?: "details" | "external" | "internal" | "schedule" | "quotation";
   jobId: string;
 }>) {
   const [job, setJob] = useState<JobRecord | null>(null);
@@ -1387,12 +1557,16 @@ export function JobRecordPage({
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingDocumentArea, setUploadingDocumentArea] = useState<"EXTERNAL" | "INTERNAL" | null>(null);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule">(initialTab);
+  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule" | "quotation">(initialTab);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
+  const [quotationRevisions, setQuotationRevisions] = useState<QuotationRevision[]>([]);
+  const [revisionLabel, setRevisionLabel] = useState("");
+  const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -1439,6 +1613,9 @@ export function JobRecordPage({
       setAllJobs(nextJobs);
       setDocuments(nextDocuments);
       setAssets(nextAssets);
+      setQuotation(parseQuotation(nextJob.quotationJson));
+      setQuotationRevisions(parseQuotationRevisions(nextJob.quotationRevisionsJson));
+      setFinalMeasure(parseFinalMeasure(nextJob.finalMeasureJson));
       const scheduledDays = (nextJob.scheduledDays ?? []).length > 0
         ? [...nextJob.scheduledDays].sort()
         : [nextJob.scheduledFor ? new Date(nextJob.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
@@ -1666,6 +1843,10 @@ export function JobRecordPage({
         method: "PATCH",
         body: JSON.stringify({
           ...form,
+          quoteStatus: quotation.totalAmount ? "DRAFT" : "NOT_STARTED",
+          quotation,
+          quotationRevisions,
+          finalMeasure,
           scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
           scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
           scheduledStartTime: form.scheduledStartTime || undefined,
@@ -1721,15 +1902,52 @@ export function JobRecordPage({
     }
   }
 
+  function addQuotationItem() {
+    setQuotation((current) => ({
+      ...current,
+      items: [...current.items, createEmptyQuoteItem()]
+    }));
+  }
+
+  function updateQuotationItem(itemId: string, key: keyof QuoteLineItem, value: string) {
+    setQuotation((current) => ({
+      ...current,
+      items: current.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item)
+    }));
+  }
+
+  function removeQuotationItem(itemId: string) {
+    setQuotation((current) => ({
+      ...current,
+      items: current.items.length === 1 ? current.items : current.items.filter((item) => item.id !== itemId)
+    }));
+  }
+
+  function saveQuotationRevision() {
+    const label = revisionLabel.trim() || `Revision ${quotationRevisions.length + 1}`;
+    const snapshot: QuotationRevision = {
+      id: crypto.randomUUID(),
+      label,
+      createdAt: new Date().toISOString(),
+      note: quotation.revisionNotes,
+      totalAmount: quotation.totalAmount,
+      items: quotation.items
+    };
+    setQuotationRevisions((current) => [snapshot, ...current]);
+    setRevisionLabel("");
+    setSuccess(`Saved ${label}. Remember to save the job to keep it.`);
+  }
+
   return (
     <ProtectedWorkspace allow="tenant" description="Review a single job record and manage its scheduling." title={job ? job.title : "Job Record"}>
       {(session) => {
         const canManage = canManageWorkspace(session.user.role);
-        const visibleActiveTab = !canManage && activeTab === "internal" ? "external" : activeTab;
+        const visibleActiveTab = !canManage && (activeTab === "internal" || activeTab === "quotation") ? "external" : activeTab;
         const externalDocuments = documents.filter((document) => (document.visibility ?? "EXTERNAL") === "EXTERNAL");
         const internalDocuments = documents.filter((document) => document.visibility === "INTERNAL");
-        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule"; label: string }> = [
+        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule" | "quotation"; label: string }> = [
           { key: "details" as const, label: "Details" },
+          ...(canManage ? [{ key: "quotation" as const, label: "Quotation" }] : []),
           { key: "external" as const, label: canManage ? "External Info" : "Information" },
           ...(canManage ? [{ key: "internal" as const, label: "Internal Info" }] : []),
           { key: "schedule" as const, label: "Schedule" }
@@ -1792,6 +2010,139 @@ export function JobRecordPage({
                       <div>
                         <div className="muted">Tasks</div>
                         <div style={{ fontWeight: 700 }}>{job?.tasks?.length ?? 0}</div>
+                      </div>
+                      <div>
+                        <div className="muted">Quote status</div>
+                        <div style={{ fontWeight: 700 }}>{job?.quoteStatus?.replaceAll("_", " ") || "Not started"}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {visibleActiveTab === "quotation" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
+                  <div className="stack">
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 16 }}>Current quotation</div>
+                      {canManage ? (
+                        <div className="stack">
+                          <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
+                          <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
+                          <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
+                          <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
+                          <TextAreaField label="Revision notes" onChange={(value) => setQuotation((current) => ({ ...current, revisionNotes: value }))} value={quotation.revisionNotes} />
+                          <TextField label="Quoted total" onChange={(value) => setQuotation((current) => ({ ...current, totalAmount: value }))} value={quotation.totalAmount} />
+                        </div>
+                      ) : (
+                        <div className="stack">
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{quotation.reference || "Not set"}</div></div>
+                          <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{quotation.scope || "Not set"}</div></div>
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div></div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+                        <div style={{ fontWeight: 800 }}>Quote line items</div>
+                        {canManage ? <button className="button button-subtle" onClick={addQuotationItem} type="button">Add line item</button> : null}
+                      </div>
+                      <div className="stack">
+                        {quotation.items.map((item) => (
+                          <div key={item.id} className="panel" style={{ padding: 16 }}>
+                            {canManage ? (
+                              <div className="stack">
+                                <TextField label="Title" onChange={(value) => updateQuotationItem(item.id, "title", value)} value={item.title} />
+                                <TextAreaField label="Description" onChange={(value) => updateQuotationItem(item.id, "description", value)} value={item.description} />
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                                  <TextField label="Quantity" onChange={(value) => updateQuotationItem(item.id, "quantity", value)} value={item.quantity} />
+                                  <TextField label="Unit" onChange={(value) => updateQuotationItem(item.id, "unit", value)} value={item.unit} />
+                                  <TextField label="Unit price" onChange={(value) => updateQuotationItem(item.id, "unitPrice", value)} value={item.unitPrice} />
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                  <button className="button button-subtle" onClick={() => removeQuotationItem(item.id)} type="button">Remove line item</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="stack" style={{ gap: 8 }}>
+                                <div style={{ fontWeight: 700 }}>{item.title || "Untitled item"}</div>
+                                <div className="muted" style={{ whiteSpace: "pre-wrap" }}>{item.description || "No description."}</div>
+                                <div>{item.quantity} {item.unit} at {item.unitPrice}</div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 16 }}>Final measure</div>
+                      {canManage ? (
+                        <div className="stack">
+                          <TextField label="Measured by" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredBy: value }))} value={finalMeasure.measuredBy} />
+                          <TextField label="Measured on" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredOn: value }))} type="date" value={finalMeasure.measuredOn} />
+                          <TextAreaField label="Measure summary" onChange={(value) => setFinalMeasure((current) => ({ ...current, summary: value }))} value={finalMeasure.summary} />
+                          <TextField label="Measured total value" onChange={(value) => setFinalMeasure((current) => ({ ...current, totalMeasuredValue: value }))} value={finalMeasure.totalMeasuredValue} />
+                        </div>
+                      ) : (
+                        <div className="stack">
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Measured by</div><div style={{ fontWeight: 700 }}>{finalMeasure.measuredBy || "Not set"}</div></div>
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Measured on</div><div style={{ fontWeight: 700 }}>{finalMeasure.measuredOn || "Not set"}</div></div>
+                          <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Summary</div><div style={{ fontWeight: 700 }}>{finalMeasure.summary || "Not set"}</div></div>
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Final value</div><div style={{ fontWeight: 700 }}>{finalMeasure.totalMeasuredValue || "Not set"}</div></div>
+                        </div>
+                      )}
+                    </div>
+
+                    {canManage ? (
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                        <button className="button" onClick={handleSave} type="button">Save Quotation</button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="stack">
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Commercial summary</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        <div>
+                          <div className="muted">Quote status</div>
+                          <div style={{ fontWeight: 700 }}>{job?.quoteStatus?.replaceAll("_", " ") || (quotation.totalAmount ? "DRAFT" : "NOT STARTED")}</div>
+                        </div>
+                        <div>
+                          <div className="muted">Current quote value</div>
+                          <div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div>
+                        </div>
+                        <div>
+                          <div className="muted">Final measured value</div>
+                          <div style={{ fontWeight: 700 }}>{finalMeasure.totalMeasuredValue || "Not set"}</div>
+                        </div>
+                        <div>
+                          <div className="muted">Revisions saved</div>
+                          <div style={{ fontWeight: 700 }}>{quotationRevisions.length}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Revision register</div>
+                      {canManage ? (
+                        <div className="stack" style={{ marginBottom: 16 }}>
+                          <TextField label="Revision label" onChange={setRevisionLabel} value={revisionLabel} />
+                          <button className="button button-subtle" onClick={saveQuotationRevision} type="button">Capture Current Revision</button>
+                        </div>
+                      ) : null}
+                      <div className="stack" style={{ gap: 12 }}>
+                        {quotationRevisions.length === 0 ? <div className="muted">No quotation revisions saved yet.</div> : null}
+                        {quotationRevisions.map((revision) => (
+                          <div key={revision.id} className="panel" style={{ padding: 14 }}>
+                            <div style={{ fontWeight: 700 }}>{revision.label}</div>
+                            <div className="muted">{formatDateLabel(revision.createdAt)}</div>
+                            <div style={{ marginTop: 8 }}>Total: {revision.totalAmount || "Not set"}</div>
+                            <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{revision.note || "No revision note."}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -3223,83 +3574,141 @@ export function UserRecordPage({
   );
 }
 
-export const AssetsPage = createCrudPage({
-  title: "Assets",
-  description: "Track plant, tools, and tagged field equipment.",
-  path: "assets",
-  fields: [
-    { key: "name", label: "Asset name" },
-    { key: "serialNumber", label: "Serial number" }
-  ],
-  list: (item) => (
-    <>
-      <div style={{ fontWeight: 700 }}>{String(item.name)}</div>
-      <div className="muted">{String(item.serialNumber)}</div>
-    </>
-  )
-});
-
-export function VehiclesPage() {
-  const [vehicles, setVehicles] = useState<AssetRecord[]>([]);
+function AssetManagementWorkspace({
+  title,
+  description,
+  kind,
+  emptyMessage
+}: Readonly<{
+  title: string;
+  description: string;
+  kind?: string;
+  emptyMessage: string;
+}>) {
+  const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", serialNumber: "", registrationNumber: "" });
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const emptyForm = {
+    name: "",
+    serialNumber: "",
+    registrationNumber: "",
+    assetStatus: "ACTIVE",
+    notes: "",
+    lastServicedAt: "",
+    nextServiceDueAt: ""
+  };
+  const [form, setForm] = useState(emptyForm);
 
   async function load() {
     try {
       const items = await apiRequest<AssetRecord[]>("assets");
-      setVehicles(items.filter((item) => (item.kind ?? "GENERAL") === "VEHICLE"));
+      setAssets(kind ? items.filter((item) => (item.kind ?? "GENERAL") === kind) : items);
       setError(null);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Failed to load vehicles.");
+      setError(caughtError instanceof Error ? caughtError.message : `Failed to load ${title.toLowerCase()}.`);
     }
   }
 
   useEffect(() => { void load(); }, []);
 
+  function beginEdit(asset: AssetRecord) {
+    setEditingAssetId(asset.id);
+    setForm({
+      name: asset.name ?? "",
+      serialNumber: asset.serialNumber ?? "",
+      registrationNumber: asset.registrationNumber ?? "",
+      assetStatus: asset.assetStatus ?? "ACTIVE",
+      notes: asset.notes ?? "",
+      lastServicedAt: asset.lastServicedAt ? asset.lastServicedAt.slice(0, 10) : "",
+      nextServiceDueAt: asset.nextServiceDueAt ? asset.nextServiceDueAt.slice(0, 10) : ""
+    });
+  }
+
+  function resetForm() {
+    setEditingAssetId(null);
+    setForm(emptyForm);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      await apiRequest("assets", {
-        method: "POST",
+      await apiRequest(editingAssetId ? `assets/${editingAssetId}` : "assets", {
+        method: editingAssetId ? "PATCH" : "POST",
         body: JSON.stringify({
           ...form,
-          kind: "VEHICLE"
+          kind,
+          lastServicedAt: form.lastServicedAt ? `${form.lastServicedAt}T00:00:00` : null,
+          nextServiceDueAt: form.nextServiceDueAt ? `${form.nextServiceDueAt}T00:00:00` : null
         })
       });
-      setForm({ name: "", serialNumber: "", registrationNumber: "" });
+      resetForm();
       await load();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Failed to create vehicle.");
+      setError(caughtError instanceof Error ? caughtError.message : `Failed to save ${title.toLowerCase()}.`);
+    }
+  }
+
+  async function handleDelete(assetId: string) {
+    try {
+      await apiRequest(`assets/${assetId}`, { method: "DELETE" });
+      if (editingAssetId === assetId) {
+        resetForm();
+      }
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : `Failed to remove ${title.toLowerCase()}.`);
     }
   }
 
   return (
-    <ProtectedWorkspace allow="tenant" description="Manage company vehicles and keep them ready for job allocation." title="Vehicles">
+    <ProtectedWorkspace allow="tenant" description={description} title={title}>
       {(session) => {
         const canManage = canManageWorkspace(session.user.role);
         if (!canManage) {
-          return <div className="panel" style={{ padding: 24 }}>Only managers can manage vehicles.</div>;
+          return <div className="panel" style={{ padding: 24 }}>Only managers can manage assets.</div>;
         }
 
         return (
           <PanelGrid>
             <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>Add vehicle</h2>
+              <h2 style={{ marginTop: 0 }}>{editingAssetId ? `Edit ${title.slice(0, -1)}` : `Add ${title.slice(0, -1)}`}</h2>
               <form className="stack" onSubmit={handleSubmit}>
-                <TextField label="Vehicle name" onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
-                <TextField label="Fleet serial" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
+                <TextField label={`${title.slice(0, -1)} name`} onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
+                <TextField label="Serial / fleet number" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
                 <TextField label="Registration" onChange={(value) => setForm((current) => ({ ...current, registrationNumber: value }))} value={form.registrationNumber} />
-                <button className="button" type="submit">Create Vehicle</button>
+                <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, assetStatus: value }))} options={["ACTIVE", "IN_SERVICE", "OFF_HIRE", "REPAIR", "RETIRED"]} value={form.assetStatus} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <TextField label="Last serviced" onChange={(value) => setForm((current) => ({ ...current, lastServicedAt: value }))} type="date" value={form.lastServicedAt} />
+                  <TextField label="Next service due" onChange={(value) => setForm((current) => ({ ...current, nextServiceDueAt: value }))} type="date" value={form.nextServiceDueAt} />
+                </div>
+                <TextAreaField label="Notes" onChange={(value) => setForm((current) => ({ ...current, notes: value }))} value={form.notes} />
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <button className="button" type="submit">{editingAssetId ? "Save Changes" : `Create ${title.slice(0, -1)}`}</button>
+                  {editingAssetId ? <button className="button button-subtle" onClick={resetForm} type="button">Cancel Edit</button> : null}
+                </div>
               </form>
               <ErrorText error={error} />
             </article>
             <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>Fleet</h2>
+              <h2 style={{ marginTop: 0 }}>{title}</h2>
               <div className="stack">
-                {vehicles.map((vehicle) => (
-                  <div key={vehicle.id} className="panel" style={{ padding: 16 }}>
-                    <div style={{ fontWeight: 700 }}>{vehicle.name}</div>
-                    <div className="muted">{vehicle.registrationNumber || vehicle.serialNumber}</div>
+                {assets.length === 0 ? <div className="muted">{emptyMessage}</div> : null}
+                {assets.map((asset) => (
+                  <div key={asset.id} className="panel" style={{ padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{asset.name}</div>
+                        <div className="muted">{asset.registrationNumber || asset.serialNumber}</div>
+                      </div>
+                      <div className="badge">{asset.assetStatus ?? "ACTIVE"}</div>
+                    </div>
+                    <div className="muted" style={{ marginTop: 10 }}>Last service: {formatDateLabel(asset.lastServicedAt)}</div>
+                    <div className="muted">Next service due: {formatDateLabel(asset.nextServiceDueAt)}</div>
+                    {asset.notes ? <div style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{asset.notes}</div> : null}
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+                      <button className="button button-subtle" onClick={() => beginEdit(asset)} type="button">Edit</button>
+                      <button className="button button-danger" onClick={() => void handleDelete(asset.id)} type="button">Remove</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3308,6 +3717,27 @@ export function VehiclesPage() {
         );
       }}
     </ProtectedWorkspace>
+  );
+}
+
+export function AssetsPage() {
+  return (
+    <AssetManagementWorkspace
+      description="Track plant, tools, vehicles, and service-sensitive field equipment."
+      emptyMessage="No assets have been added yet."
+      title="Assets"
+    />
+  );
+}
+
+export function VehiclesPage() {
+  return (
+    <AssetManagementWorkspace
+      description="Manage company vehicles, service dates, and fleet readiness for job allocation."
+      emptyMessage="No vehicles have been added yet."
+      kind="VEHICLE"
+      title="Vehicles"
+    />
   );
 }
 

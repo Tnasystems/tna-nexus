@@ -59,6 +59,10 @@ export class JobsService {
         externalInfo: dto.externalInfo ?? "",
         internalInfo: dto.internalInfo ?? "",
         status: dto.status,
+        quoteStatus: dto.quoteStatus ?? this.deriveQuoteStatus(dto.quotation),
+        quotationJson: JSON.stringify(this.normalizeObject(dto.quotation)),
+        quotationRevisionsJson: JSON.stringify(this.normalizeObjectArray(dto.quotationRevisions)),
+        finalMeasureJson: JSON.stringify(this.normalizeObject(dto.finalMeasure)),
         scheduledFor: this.toDateBoundary(dto.scheduledFor, scheduledDays[0], "start"),
         scheduledTo: this.toDateBoundary(dto.scheduledTo, scheduledDays[scheduledDays.length - 1], "end"),
         scheduledStartTime: dto.scheduledStartTime ?? null,
@@ -95,6 +99,10 @@ export class JobsService {
         externalInfo: dto.externalInfo ?? undefined,
         internalInfo: dto.internalInfo ?? undefined,
         status: dto.status ?? undefined,
+        quoteStatus: dto.quoteStatus ?? (dto.quotation !== undefined ? this.deriveQuoteStatus(dto.quotation) : undefined),
+        quotationJson: dto.quotation === undefined ? undefined : JSON.stringify(this.normalizeObject(dto.quotation)),
+        quotationRevisionsJson: dto.quotationRevisions === undefined ? undefined : JSON.stringify(this.normalizeObjectArray(dto.quotationRevisions)),
+        finalMeasureJson: dto.finalMeasure === undefined ? undefined : JSON.stringify(this.normalizeObject(dto.finalMeasure)),
         scheduledFor: (dto.status === "CANCELLED")
           ? null
           : dto.scheduledDays === undefined && dto.scheduledFor === undefined
@@ -436,6 +444,10 @@ export class JobsService {
   private sanitizeJobForUser<
     T extends {
       internalInfo?: string | null;
+      quoteStatus?: string | null;
+      quotationJson?: string | null;
+      quotationRevisionsJson?: string | null;
+      finalMeasureJson?: string | null;
     }
   >(job: T, user: JwtUser) {
     if (this.isManager(user)) {
@@ -444,8 +456,43 @@ export class JobsService {
 
     return {
       ...job,
-      internalInfo: ""
+      internalInfo: "",
+      quoteStatus: "NOT_STARTED",
+      quotationJson: "{}",
+      quotationRevisionsJson: "[]",
+      finalMeasureJson: "{}"
     };
+  }
+
+  private normalizeObject(value?: Record<string, unknown>) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+
+    return value;
+  }
+
+  private normalizeObjectArray(value?: Record<string, unknown>[]) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry));
+  }
+
+  private deriveQuoteStatus(value?: Record<string, unknown>) {
+    const normalized = this.normalizeObject(value);
+    const totalAmount = normalized.totalAmount;
+
+    if (typeof totalAmount === "number" && totalAmount > 0) {
+      return "DRAFT";
+    }
+
+    if (typeof totalAmount === "string" && totalAmount.trim().length > 0) {
+      return "DRAFT";
+    }
+
+    return "NOT_STARTED";
   }
 
 }

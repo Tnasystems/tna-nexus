@@ -35,6 +35,11 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @IsString()
+  quoteStatus?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsDateString()
   scheduledFor?: string;
 
@@ -84,6 +89,21 @@ export class CreateJobDto {
   @IsOptional()
   @IsObject()
   dailyAssignments?: Record<string, string[]>;
+
+  @ApiProperty({ required: false, type: Object })
+  @IsOptional()
+  @IsObject()
+  quotation?: Record<string, unknown>;
+
+  @ApiProperty({ required: false, type: [Object] })
+  @IsOptional()
+  @IsArray()
+  quotationRevisions?: Record<string, unknown>[];
+
+  @ApiProperty({ required: false, type: Object })
+  @IsOptional()
+  @IsObject()
+  finalMeasure?: Record<string, unknown>;
 }
 
 export class UpdateJobDto extends PartialType(CreateJobDto) {}

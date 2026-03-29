@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { JwtUser } from "@tna-nexus/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { AssetsService } from "./assets.service";
+import { CreateAssetDto, UpdateAssetDto } from "./assets.dto";
 
 @ApiTags("assets")
 @ApiBearerAuth()
@@ -18,10 +19,17 @@ export class AssetsController {
   }
 
   @Post()
-  create(
-    @CurrentUser() user: JwtUser,
-    @Body() body: { name: string; serialNumber: string; kind?: string; registrationNumber?: string }
-  ) {
+  create(@CurrentUser() user: JwtUser, @Body() body: CreateAssetDto) {
     return this.service.create(user, body);
+  }
+
+  @Patch(":assetId")
+  update(@CurrentUser() user: JwtUser, @Param("assetId") assetId: string, @Body() body: UpdateAssetDto) {
+    return this.service.update(user, assetId, body);
+  }
+
+  @Delete(":assetId")
+  remove(@CurrentUser() user: JwtUser, @Param("assetId") assetId: string) {
+    return this.service.remove(user, assetId);
   }
 }

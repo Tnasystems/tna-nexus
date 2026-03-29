@@ -11,6 +11,8 @@ export default async function DashboardJobRecordRoute({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const initialTab = resolvedSearchParams?.tab === "schedule"
     ? "schedule"
+    : resolvedSearchParams?.tab === "quotation"
+    ? "quotation"
     : resolvedSearchParams?.tab === "external"
     ? "external"
     : resolvedSearchParams?.tab === "internal"

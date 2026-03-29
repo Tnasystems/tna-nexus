@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { JwtUser } from "@tna-nexus/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
-import { CreateJobDto, UpdateJobDto } from "./jobs.dto";
+import { CreateContractDto, CreateJobDto, CreateQuoteItemDto, UpdateContractDto, UpdateJobDto, UpdateQuoteItemDto } from "./jobs.dto";
 import { JobsService } from "./jobs.service";
 
 @ApiTags("jobs")
@@ -17,6 +17,31 @@ export class JobsController {
   @Get()
   list(@CurrentUser() user: JwtUser) {
     return this.service.list(user);
+  }
+
+  @Get("quotation/options")
+  quotationOptions(@CurrentUser() user: JwtUser) {
+    return this.service.getQuotationOptions(user);
+  }
+
+  @Post("quotation/contracts")
+  createContract(@CurrentUser() user: JwtUser, @Body() body: CreateContractDto) {
+    return this.service.createContract(user, body);
+  }
+
+  @Patch("quotation/contracts/:contractId")
+  updateContract(@CurrentUser() user: JwtUser, @Param("contractId") contractId: string, @Body() body: UpdateContractDto) {
+    return this.service.updateContract(user, contractId, body);
+  }
+
+  @Post("quotation/items")
+  createQuoteItem(@CurrentUser() user: JwtUser, @Body() body: CreateQuoteItemDto) {
+    return this.service.createQuoteItem(user, body);
+  }
+
+  @Patch("quotation/items/:itemId")
+  updateQuoteItem(@CurrentUser() user: JwtUser, @Param("itemId") itemId: string, @Body() body: UpdateQuoteItemDto) {
+    return this.service.updateQuoteItem(user, itemId, body);
   }
 
   @Get(":jobId")

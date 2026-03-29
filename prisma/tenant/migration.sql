@@ -38,6 +38,56 @@ CREATE TABLE IF NOT EXISTS "Job" (
   "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS "Contract" (
+  "id" TEXT PRIMARY KEY,
+  "name" TEXT NOT NULL,
+  "code" TEXT NOT NULL UNIQUE,
+  "description" TEXT NOT NULL DEFAULT '',
+  "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
+  "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS "QuoteItem" (
+  "id" TEXT PRIMARY KEY,
+  "name" TEXT NOT NULL,
+  "code" TEXT NOT NULL UNIQUE,
+  "description" TEXT NOT NULL DEFAULT '',
+  "unit" TEXT NOT NULL DEFAULT 'item',
+  "defaultRate" DECIMAL(10,2) NOT NULL DEFAULT 0,
+  "contractRatesJson" TEXT NOT NULL DEFAULT '{}',
+  "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
+  "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "description" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE "QuoteItem" ADD COLUMN IF NOT EXISTS "description" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "QuoteItem" ADD COLUMN IF NOT EXISTS "unit" TEXT NOT NULL DEFAULT 'item';
+ALTER TABLE "QuoteItem" ADD COLUMN IF NOT EXISTS "defaultRate" DECIMAL(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE "QuoteItem" ADD COLUMN IF NOT EXISTS "contractRatesJson" TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE "QuoteItem" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE "QuoteItem" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+INSERT INTO "Contract" ("id", "name", "code", "description")
+SELECT 'contract-standard', 'Standard Contract', 'STANDARD', 'Default pricing schedule'
+WHERE NOT EXISTS (SELECT 1 FROM "Contract" WHERE "id" = 'contract-standard');
+
+INSERT INTO "QuoteItem" ("id", "name", "code", "description", "unit", "defaultRate", "contractRatesJson")
+SELECT 'quote-sign-face', 'Sign face replacement', 'SIGN-FACE', 'Replacement sign face supply and fit', 'item', 95.00, '{"contract-standard":"95.00"}'
+WHERE NOT EXISTS (SELECT 1 FROM "QuoteItem" WHERE "id" = 'quote-sign-face');
+
+INSERT INTO "QuoteItem" ("id", "name", "code", "description", "unit", "defaultRate", "contractRatesJson")
+SELECT 'quote-post-install', 'Sign post installation', 'POST-INSTALL', 'Install new sign post including excavation and concrete', 'item', 165.00, '{"contract-standard":"165.00"}'
+WHERE NOT EXISTS (SELECT 1 FROM "QuoteItem" WHERE "id" = 'quote-post-install');
+
+INSERT INTO "QuoteItem" ("id", "name", "code", "description", "unit", "defaultRate", "contractRatesJson")
+SELECT 'quote-traffic-management', 'Traffic management setup', 'TM-SETUP', 'Traffic management deployment for site works', 'day', 220.00, '{"contract-standard":"220.00"}'
+WHERE NOT EXISTS (SELECT 1 FROM "QuoteItem" WHERE "id" = 'quote-traffic-management');
+
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "companyJobNumber" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "customerJobNumber" TEXT;
 ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "externalInfo" TEXT NOT NULL DEFAULT '';

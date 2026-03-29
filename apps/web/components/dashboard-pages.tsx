@@ -239,11 +239,30 @@ function parseTrainingRecords(value: string | null | undefined) {
 
 interface QuoteLineItem {
   id: string;
+  sourceItemId?: string;
+  code?: string;
   title: string;
   description: string;
   quantity: string;
   unit: string;
   unitPrice: string;
+}
+
+interface ContractRecord {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+}
+
+interface QuoteCatalogItemRecord {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  unit: string;
+  defaultRate: string;
+  contractRates: Record<string, string>;
 }
 
 interface QuotationRevision {
@@ -256,6 +275,7 @@ interface QuotationRevision {
 }
 
 interface QuotationRecord {
+  contractId: string;
   reference: string;
   scope: string;
   exclusions: string;
@@ -275,6 +295,8 @@ interface FinalMeasureRecord {
 function createEmptyQuoteItem(): QuoteLineItem {
   return {
     id: crypto.randomUUID(),
+    sourceItemId: "",
+    code: "",
     title: "",
     description: "",
     quantity: "1",
@@ -285,6 +307,7 @@ function createEmptyQuoteItem(): QuoteLineItem {
 
 function createEmptyQuotation(): QuotationRecord {
   return {
+    contractId: "",
     reference: "",
     scope: "",
     exclusions: "",
@@ -322,6 +345,8 @@ function parseQuotation(value: string | null | undefined) {
   const items = Array.isArray(parsed.items) && parsed.items.length > 0
     ? parsed.items.map((item) => ({
       id: typeof item?.id === "string" && item.id ? item.id : crypto.randomUUID(),
+      sourceItemId: typeof item?.sourceItemId === "string" ? item.sourceItemId : "",
+      code: typeof item?.code === "string" ? item.code : "",
       title: typeof item?.title === "string" ? item.title : "",
       description: typeof item?.description === "string" ? item.description : "",
       quantity: typeof item?.quantity === "string" ? item.quantity : "1",
@@ -356,6 +381,18 @@ function formatDateLabel(value: string | null | undefined) {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+}
+
+function getCatalogRate(item: QuoteCatalogItemRecord, contractId: string) {
+  return item.contractRates[contractId] ?? item.defaultRate ?? "0.00";
+}
+
+function calculateQuoteTotal(items: QuoteLineItem[]) {
+  return items.reduce((total, item) => {
+    const quantity = Number(item.quantity);
+    const unitPrice = Number(item.unitPrice);
+    return total + (Number.isFinite(quantity) ? quantity : 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
+  }, 0);
 }
 
 async function openProtectedFile(path: string, fallbackFileName: string) {
@@ -1059,11 +1096,14 @@ export function JobsPage() {
 export function CreateJobPage() {
   const router = useRouter();
   const { jobs, users, assets, error, reload } = useJobsAndUsers();
+  const [contracts, setContracts] = useState<ContractRecord[]>([]);
+  const [quoteItems, setQuoteItems] = useState<QuoteCatalogItemRecord[]>([]);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [selectedQuoteItemId, setSelectedQuoteItemId] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
@@ -1097,6 +1137,19 @@ export function CreateJobPage() {
   const usersById = new Map(users.map((user) => [user.id, user]));
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
   const vehicleOptions = assets.filter((asset) => (asset.kind ?? "GENERAL") === "VEHICLE");
+
+  useEffect(() => {
+    apiRequest<{ contracts: ContractRecord[]; items: QuoteCatalogItemRecord[] }>("jobs/quotation/options")
+      .then((result) => {
+        setContracts(result.contracts);
+        setQuoteItems(result.items);
+        setQuotation((current) => ({
+          ...current,
+          contractId: current.contractId || result.contracts[0]?.id || ""
+        }));
+      })
+      .catch(() => undefined);
+  }, []);
 
   function buildDateRange(start: string, end: string) {
     if (!start || !end) {
@@ -1203,6 +1256,62 @@ export function CreateJobPage() {
       ...current,
       assignedVehicleIds: current.assignedVehicleIds.filter((id) => id !== vehicleId)
     }));
+  }
+
+  function addQuoteItemFromCatalog() {
+    if (!selectedQuoteItemId) {
+      return;
+    }
+
+    const matchedItem = quoteItems.find((item) => item.id === selectedQuoteItemId);
+    if (!matchedItem) {
+      return;
+    }
+
+    setQuotation((current) => {
+      const nextItems = [
+        ...current.items,
+        {
+          id: crypto.randomUUID(),
+          sourceItemId: matchedItem.id,
+          code: matchedItem.code,
+          title: matchedItem.name,
+          description: matchedItem.description,
+          quantity: "1",
+          unit: matchedItem.unit,
+          unitPrice: getCatalogRate(matchedItem, current.contractId)
+        }
+      ];
+
+      return {
+        ...current,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+    setSelectedQuoteItemId("");
+  }
+
+  function updateQuotationItemInCreate(itemId: string, key: keyof QuoteLineItem, value: string) {
+    setQuotation((current) => {
+      const nextItems = current.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item);
+      return {
+        ...current,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+  }
+
+  function removeQuotationItemInCreate(itemId: string) {
+    setQuotation((current) => {
+      const nextItems = current.items.filter((item) => item.id !== itemId);
+      return {
+        ...current,
+        items: nextItems.length > 0 ? nextItems : [createEmptyQuoteItem()],
+        totalAmount: (nextItems.length > 0 ? calculateQuoteTotal(nextItems) : 0).toFixed(2)
+      };
+    });
   }
 
   const assignmentWarnings = form.scheduledDays.flatMap((day) =>
@@ -1363,10 +1472,70 @@ export function CreateJobPage() {
                   <div className="panel" style={{ padding: 20 }}>
                     <div style={{ fontWeight: 800, marginBottom: 16 }}>Quotation</div>
                     <div className="stack">
+                      <label className="field">
+                        <span>Contract</span>
+                        <select
+                          className="input"
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setQuotation((current) => {
+                              const nextItems = current.items.map((item) => {
+                                const matchedItem = item.sourceItemId ? quoteItems.find((entry) => entry.id === item.sourceItemId) : undefined;
+                                return matchedItem ? { ...item, unitPrice: getCatalogRate(matchedItem, value) } : item;
+                              });
+
+                              return {
+                                ...current,
+                                contractId: value,
+                                items: nextItems,
+                                totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+                              };
+                            });
+                          }}
+                          value={quotation.contractId}
+                        >
+                          <option value="">Choose a contract</option>
+                          {contracts.map((contract) => (
+                            <option key={contract.id} value={contract.id}>{contract.name}</option>
+                          ))}
+                        </select>
+                      </label>
                       <TextField label="Quotation reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
                       <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
                       <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
                       <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
+                      <div className="field">
+                        <span>Add quoteable item</span>
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                          <label className="field" style={{ flex: "1 1 280px" }}>
+                            <span>Catalogue item</span>
+                            <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
+                              <option value="">Choose an item</option>
+                              {quoteItems.map((item) => (
+                                <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <button className="button button-subtle" onClick={addQuoteItemFromCatalog} type="button">Add item</button>
+                        </div>
+                      </div>
+                      <div className="stack">
+                        {quotation.items.map((item) => (
+                          <div key={item.id} className="panel" style={{ padding: 14 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 1fr", gap: 12 }}>
+                              <TextField label="Item" onChange={(value) => updateQuotationItemInCreate(item.id, "title", value)} value={item.title} />
+                              <TextField label="Qty" onChange={(value) => updateQuotationItemInCreate(item.id, "quantity", value)} value={item.quantity} />
+                              <TextField label="Unit" onChange={(value) => updateQuotationItemInCreate(item.id, "unit", value)} value={item.unit} />
+                              <TextField label="Rate" onChange={(value) => updateQuotationItemInCreate(item.id, "unitPrice", value)} value={item.unitPrice} />
+                            </div>
+                            <TextAreaField label="Description" onChange={(value) => updateQuotationItemInCreate(item.id, "description", value)} value={item.description} />
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                              <div className="muted">{item.code || "Custom item"}</div>
+                              <button className="button button-subtle" onClick={() => removeQuotationItemInCreate(item.id)} type="button">Remove item</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                       <TextField label="Quoted total" onChange={(value) => setQuotation((current) => ({ ...current, totalAmount: value }))} value={quotation.totalAmount} />
                     </div>
                   </div>
@@ -1553,6 +1722,8 @@ export function JobRecordPage({
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [documents, setDocuments] = useState<JobDocumentRecord[]>([]);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
+  const [contracts, setContracts] = useState<ContractRecord[]>([]);
+  const [quoteItems, setQuoteItems] = useState<QuoteCatalogItemRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingDocumentArea, setUploadingDocumentArea] = useState<"EXTERNAL" | "INTERNAL" | null>(null);
@@ -1567,6 +1738,7 @@ export function JobRecordPage({
   const [quotationRevisions, setQuotationRevisions] = useState<QuotationRevision[]>([]);
   const [revisionLabel, setRevisionLabel] = useState("");
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
+  const [selectedQuoteItemId, setSelectedQuoteItemId] = useState("");
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -1646,6 +1818,15 @@ export function JobRecordPage({
   useEffect(() => {
     void load();
   }, [jobId]);
+
+  useEffect(() => {
+    apiRequest<{ contracts: ContractRecord[]; items: QuoteCatalogItemRecord[] }>("jobs/quotation/options")
+      .then((result) => {
+        setContracts(result.contracts);
+        setQuoteItems(result.items);
+      })
+      .catch(() => undefined);
+  }, []);
 
   function buildDateRange(start: string, end: string) {
     if (!start || !end) {
@@ -1910,17 +2091,25 @@ export function JobRecordPage({
   }
 
   function updateQuotationItem(itemId: string, key: keyof QuoteLineItem, value: string) {
-    setQuotation((current) => ({
-      ...current,
-      items: current.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item)
-    }));
+    setQuotation((current) => {
+      const nextItems = current.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item);
+      return {
+        ...current,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
   }
 
   function removeQuotationItem(itemId: string) {
-    setQuotation((current) => ({
-      ...current,
-      items: current.items.length === 1 ? current.items : current.items.filter((item) => item.id !== itemId)
-    }));
+    setQuotation((current) => {
+      const nextItems = current.items.length === 1 ? current.items : current.items.filter((item) => item.id !== itemId);
+      return {
+        ...current,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
   }
 
   function saveQuotationRevision() {
@@ -1936,6 +2125,40 @@ export function JobRecordPage({
     setQuotationRevisions((current) => [snapshot, ...current]);
     setRevisionLabel("");
     setSuccess(`Saved ${label}. Remember to save the job to keep it.`);
+  }
+
+  function addQuoteItemFromLibrary() {
+    if (!selectedQuoteItemId) {
+      return;
+    }
+
+    const matchedItem = quoteItems.find((item) => item.id === selectedQuoteItemId);
+    if (!matchedItem) {
+      return;
+    }
+
+    setQuotation((current) => {
+      const nextItems = [
+        ...current.items,
+        {
+          id: crypto.randomUUID(),
+          sourceItemId: matchedItem.id,
+          code: matchedItem.code,
+          title: matchedItem.name,
+          description: matchedItem.description,
+          quantity: "1",
+          unit: matchedItem.unit,
+          unitPrice: getCatalogRate(matchedItem, current.contractId)
+        }
+      ];
+
+      return {
+        ...current,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+    setSelectedQuoteItemId("");
   }
 
   return (
@@ -2027,15 +2250,61 @@ export function JobRecordPage({
                       <div style={{ fontWeight: 800, marginBottom: 16 }}>Current quotation</div>
                       {canManage ? (
                         <div className="stack">
+                          <label className="field">
+                            <span>Contract</span>
+                            <select
+                              className="input"
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setQuotation((current) => {
+                                  const nextItems = current.items.map((item) => {
+                                    const matchedItem = item.sourceItemId ? quoteItems.find((entry) => entry.id === item.sourceItemId) : undefined;
+                                    return matchedItem ? { ...item, unitPrice: getCatalogRate(matchedItem, value) } : item;
+                                  });
+
+                                  return {
+                                    ...current,
+                                    contractId: value,
+                                    items: nextItems,
+                                    totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+                                  };
+                                });
+                              }}
+                              value={quotation.contractId}
+                            >
+                              <option value="">Choose a contract</option>
+                              {contracts.map((contract) => (
+                                <option key={contract.id} value={contract.id}>{contract.name}</option>
+                              ))}
+                            </select>
+                          </label>
                           <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
                           <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
                           <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
                           <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
                           <TextAreaField label="Revision notes" onChange={(value) => setQuotation((current) => ({ ...current, revisionNotes: value }))} value={quotation.revisionNotes} />
-                          <TextField label="Quoted total" onChange={(value) => setQuotation((current) => ({ ...current, totalAmount: value }))} value={quotation.totalAmount} />
+                          <div className="field">
+                            <span>Add quoteable item</span>
+                            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                              <label className="field" style={{ flex: "1 1 280px" }}>
+                                <span>Catalogue item</span>
+                                <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
+                                  <option value="">Choose an item</option>
+                                  {quoteItems.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                      {item.code} - {item.name} ({getCatalogRate(item, quotation.contractId || contracts[0]?.id || "")})
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button className="button button-subtle" onClick={addQuoteItemFromLibrary} type="button">Add item</button>
+                              <button className="button button-subtle" onClick={addQuotationItem} type="button">Add custom item</button>
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="stack">
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Contract</div><div style={{ fontWeight: 700 }}>{contracts.find((contract) => contract.id === quotation.contractId)?.name || "Not set"}</div></div>
                           <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{quotation.reference || "Not set"}</div></div>
                           <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{quotation.scope || "Not set"}</div></div>
                           <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div></div>
@@ -2060,7 +2329,8 @@ export function JobRecordPage({
                                   <TextField label="Unit" onChange={(value) => updateQuotationItem(item.id, "unit", value)} value={item.unit} />
                                   <TextField label="Unit price" onChange={(value) => updateQuotationItem(item.id, "unitPrice", value)} value={item.unitPrice} />
                                 </div>
-                                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                  <div className="muted">{item.code || "Custom item"}</div>
                                   <button className="button button-subtle" onClick={() => removeQuotationItem(item.id)} type="button">Remove line item</button>
                                 </div>
                               </div>
@@ -2112,7 +2382,7 @@ export function JobRecordPage({
                         </div>
                         <div>
                           <div className="muted">Current quote value</div>
-                          <div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div>
+                          <div style={{ fontWeight: 700 }}>{quotation.totalAmount || calculateQuoteTotal(quotation.items).toFixed(2)}</div>
                         </div>
                         <div>
                           <div className="muted">Final measured value</div>
@@ -2145,6 +2415,15 @@ export function JobRecordPage({
                         ))}
                       </div>
                     </div>
+
+                    {canManage ? (
+                      <QuotationLibraryPanel
+                        contracts={contracts}
+                        quoteItems={quoteItems}
+                        setContracts={setContracts}
+                        setQuoteItems={setQuoteItems}
+                      />
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -3578,11 +3857,15 @@ function AssetManagementWorkspace({
   title,
   description,
   kind,
+  excludeKind,
+  itemLabel,
   emptyMessage
 }: Readonly<{
   title: string;
   description: string;
   kind?: string;
+  excludeKind?: string;
+  itemLabel: string;
   emptyMessage: string;
 }>) {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
@@ -3602,7 +3885,20 @@ function AssetManagementWorkspace({
   async function load() {
     try {
       const items = await apiRequest<AssetRecord[]>("assets");
-      setAssets(kind ? items.filter((item) => (item.kind ?? "GENERAL") === kind) : items);
+      setAssets(
+        items.filter((item) => {
+          const itemKind = item.kind ?? "GENERAL";
+          if (kind) {
+            return itemKind === kind;
+          }
+
+          if (excludeKind) {
+            return itemKind !== excludeKind;
+          }
+
+          return true;
+        })
+      );
       setError(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : `Failed to load ${title.toLowerCase()}.`);
@@ -3671,11 +3967,11 @@ function AssetManagementWorkspace({
         return (
           <PanelGrid>
             <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>{editingAssetId ? `Edit ${title.slice(0, -1)}` : `Add ${title.slice(0, -1)}`}</h2>
+              <h2 style={{ marginTop: 0 }}>{editingAssetId ? `Edit ${itemLabel}` : `Add ${itemLabel}`}</h2>
               <form className="stack" onSubmit={handleSubmit}>
-                <TextField label={`${title.slice(0, -1)} name`} onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
-                <TextField label="Serial / fleet number" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
-                <TextField label="Registration" onChange={(value) => setForm((current) => ({ ...current, registrationNumber: value }))} value={form.registrationNumber} />
+                <TextField label={`${itemLabel} name`} onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
+                <TextField label="Serial / asset number" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
+                <TextField label="Registration / tag" onChange={(value) => setForm((current) => ({ ...current, registrationNumber: value }))} value={form.registrationNumber} />
                 <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, assetStatus: value }))} options={["ACTIVE", "IN_SERVICE", "OFF_HIRE", "REPAIR", "RETIRED"]} value={form.assetStatus} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <TextField label="Last serviced" onChange={(value) => setForm((current) => ({ ...current, lastServicedAt: value }))} type="date" value={form.lastServicedAt} />
@@ -3683,7 +3979,7 @@ function AssetManagementWorkspace({
                 </div>
                 <TextAreaField label="Notes" onChange={(value) => setForm((current) => ({ ...current, notes: value }))} value={form.notes} />
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button className="button" type="submit">{editingAssetId ? "Save Changes" : `Create ${title.slice(0, -1)}`}</button>
+                  <button className="button" type="submit">{editingAssetId ? "Save Changes" : `Create ${itemLabel}`}</button>
                   {editingAssetId ? <button className="button button-subtle" onClick={resetForm} type="button">Cancel Edit</button> : null}
                 </div>
               </form>
@@ -3720,11 +4016,156 @@ function AssetManagementWorkspace({
   );
 }
 
+function QuotationLibraryPanel({
+  contracts,
+  quoteItems,
+  setContracts,
+  setQuoteItems
+}: Readonly<{
+  contracts: ContractRecord[];
+  quoteItems: QuoteCatalogItemRecord[];
+  setContracts: (value: ContractRecord[] | ((current: ContractRecord[]) => ContractRecord[])) => void;
+  setQuoteItems: (value: QuoteCatalogItemRecord[] | ((current: QuoteCatalogItemRecord[]) => QuoteCatalogItemRecord[])) => void;
+}>) {
+  const [contractForm, setContractForm] = useState({ name: "", code: "", description: "" });
+  const [itemForm, setItemForm] = useState({ name: "", code: "", description: "", unit: "item", defaultRate: "0.00" });
+  const [rateDrafts, setRateDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRateDrafts(
+      Object.fromEntries(
+        quoteItems.map((item) => [item.id, { ...item.contractRates }])
+      )
+    );
+  }, [quoteItems]);
+
+  async function createContract(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const created = await apiRequest<ContractRecord>("jobs/quotation/contracts", {
+        method: "POST",
+        body: JSON.stringify(contractForm)
+      });
+      setContracts((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setContractForm({ name: "", code: "", description: "" });
+      setSuccess("Contract added.");
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to create contract.");
+    }
+  }
+
+  async function createQuoteItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const created = await apiRequest<QuoteCatalogItemRecord>("jobs/quotation/items", {
+        method: "POST",
+        body: JSON.stringify(itemForm)
+      });
+      setQuoteItems((current) => [...current, { ...created, contractRates: created.contractRates ?? {} }].sort((a, b) => a.name.localeCompare(b.name)));
+      setItemForm({ name: "", code: "", description: "", unit: "item", defaultRate: "0.00" });
+      setSuccess("Quote item added.");
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to create quote item.");
+    }
+  }
+
+  async function saveQuoteItemRates(item: QuoteCatalogItemRecord) {
+    try {
+      const updated = await apiRequest<QuoteCatalogItemRecord>(`jobs/quotation/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: item.name,
+          code: item.code,
+          description: item.description,
+          unit: item.unit,
+          defaultRate: item.defaultRate,
+          contractRates: rateDrafts[item.id] ?? {}
+        })
+      });
+      setQuoteItems((current) => current.map((entry) => entry.id === item.id ? { ...updated, contractRates: updated.contractRates ?? {} } : entry));
+      setSuccess(`Saved rates for ${item.name}.`);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to save item rates.");
+    }
+  }
+
+  return (
+    <div className="panel" style={{ padding: 20 }}>
+      <div style={{ fontWeight: 800, marginBottom: 12 }}>Quotation library</div>
+      <ErrorText error={error} />
+      {success ? <div className="callout" style={{ marginBottom: 12 }}>{success}</div> : null}
+      <div className="stack">
+        <form className="stack" onSubmit={createContract}>
+          <div style={{ fontWeight: 700 }}>Contracts</div>
+          <TextField label="Contract name" onChange={(value) => setContractForm((current) => ({ ...current, name: value }))} value={contractForm.name} />
+          <TextField label="Contract code" onChange={(value) => setContractForm((current) => ({ ...current, code: value }))} value={contractForm.code} />
+          <TextAreaField label="Description" onChange={(value) => setContractForm((current) => ({ ...current, description: value }))} value={contractForm.description} />
+          <button className="button button-subtle" type="submit">Add Contract</button>
+        </form>
+        <div className="stack" style={{ gap: 10 }}>
+          {contracts.map((contract) => (
+            <div key={contract.id} className="panel" style={{ padding: 12 }}>
+              <div style={{ fontWeight: 700 }}>{contract.name}</div>
+              <div className="muted">{contract.code}</div>
+            </div>
+          ))}
+        </div>
+        <form className="stack" onSubmit={createQuoteItem}>
+          <div style={{ fontWeight: 700 }}>Quoteable items</div>
+          <TextField label="Item name" onChange={(value) => setItemForm((current) => ({ ...current, name: value }))} value={itemForm.name} />
+          <TextField label="Item code" onChange={(value) => setItemForm((current) => ({ ...current, code: value }))} value={itemForm.code} />
+          <TextAreaField label="Description" onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} value={itemForm.description} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <TextField label="Unit" onChange={(value) => setItemForm((current) => ({ ...current, unit: value }))} value={itemForm.unit} />
+            <TextField label="Default rate" onChange={(value) => setItemForm((current) => ({ ...current, defaultRate: value }))} value={itemForm.defaultRate} />
+          </div>
+          <button className="button button-subtle" type="submit">Add Quote Item</button>
+        </form>
+        <div className="stack" style={{ gap: 12 }}>
+          {quoteItems.map((item) => (
+            <div key={item.id} className="panel" style={{ padding: 14 }}>
+              <div style={{ fontWeight: 700 }}>{item.code} - {item.name}</div>
+              <div className="muted">{item.description}</div>
+              <div className="muted" style={{ marginTop: 6 }}>Default: {item.defaultRate} per {item.unit}</div>
+              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                {contracts.map((contract) => (
+                  <TextField
+                    key={`${item.id}-${contract.id}`}
+                    label={`${contract.name} rate`}
+                    onChange={(value) => setRateDrafts((current) => ({
+                      ...current,
+                      [item.id]: {
+                        ...(current[item.id] ?? {}),
+                        [contract.id]: value
+                      }
+                    }))}
+                    value={rateDrafts[item.id]?.[contract.id] ?? ""}
+                  />
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                <button className="button button-subtle" onClick={() => void saveQuoteItemRates(item)} type="button">Save Rates</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AssetsPage() {
   return (
     <AssetManagementWorkspace
-      description="Track plant, tools, vehicles, and service-sensitive field equipment."
-      emptyMessage="No assets have been added yet."
+      description="Track tools, plant, and field equipment with service dates and operational status."
+      emptyMessage="No tools or field assets have been added yet."
+      excludeKind="VEHICLE"
+      itemLabel="tool"
       title="Assets"
     />
   );
@@ -3734,8 +4175,10 @@ export function VehiclesPage() {
   return (
     <AssetManagementWorkspace
       description="Manage company vehicles, service dates, and fleet readiness for job allocation."
-      emptyMessage="No vehicles have been added yet."
+      emptyMessage="No assets have been added yet."
+      itemLabel="vehicle"
       kind="VEHICLE"
+      emptyMessage="No vehicles have been added yet."
       title="Vehicles"
     />
   );

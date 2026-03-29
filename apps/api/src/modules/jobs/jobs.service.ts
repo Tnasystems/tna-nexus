@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { JwtUser } from "@tna-nexus/shared";
 import { TenantAccessService } from "../../auth/tenant-access.service";
-import { CreateJobDto, UpdateJobDto } from "./jobs.dto";
+import { CreateContractDto, CreateJobDto, CreateQuoteItemDto, UpdateContractDto, UpdateJobDto, UpdateQuoteItemDto } from "./jobs.dto";
 
 @Injectable()
 export class JobsService {
@@ -204,6 +204,92 @@ export class JobsService {
       mimeType: document.mimeType,
       buffer: await readFile(document.storagePath)
     };
+  }
+
+  async getQuotationOptions(user: JwtUser) {
+    this.ensureManager(user);
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const [contracts, items] = await Promise.all([
+      prisma.contract.findMany({ orderBy: { name: "asc" } }),
+      prisma.quoteItem.findMany({ orderBy: { name: "asc" } })
+    ]);
+
+    return {
+      contracts,
+      items: items.map((item) => this.serializeQuoteItem(item))
+    };
+  }
+
+  async createContract(user: JwtUser, dto: CreateContractDto) {
+    this.ensureManager(user);
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    return prisma.contract.create({
+      data: {
+        id: randomUUID(),
+        name: dto.name,
+        code: dto.code,
+        description: dto.description ?? ""
+      }
+    });
+  }
+
+  async updateContract(user: JwtUser, contractId: string, dto: UpdateContractDto) {
+    this.ensureManager(user);
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const existing = await prisma.contract.findUnique({ where: { id: contractId } });
+
+    if (!existing) {
+      throw new NotFoundException("Contract not found.");
+    }
+
+    return prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        name: dto.name ?? undefined,
+        code: dto.code ?? undefined,
+        description: dto.description ?? undefined
+      }
+    });
+  }
+
+  async createQuoteItem(user: JwtUser, dto: CreateQuoteItemDto) {
+    this.ensureManager(user);
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const item = await prisma.quoteItem.create({
+      data: {
+        id: randomUUID(),
+        name: dto.name,
+        code: dto.code,
+        description: dto.description ?? "",
+        unit: dto.unit ?? "item",
+        defaultRate: this.toDecimalValue(dto.defaultRate),
+        contractRatesJson: JSON.stringify(this.normalizeStringMap(dto.contractRates))
+      }
+    });
+    return this.serializeQuoteItem(item);
+  }
+
+  async updateQuoteItem(user: JwtUser, itemId: string, dto: UpdateQuoteItemDto) {
+    this.ensureManager(user);
+    const { prisma } = await this.tenantAccess.getTenantContext(user);
+    const existing = await prisma.quoteItem.findUnique({ where: { id: itemId } });
+
+    if (!existing) {
+      throw new NotFoundException("Quote item not found.");
+    }
+
+    const item = await prisma.quoteItem.update({
+      where: { id: itemId },
+      data: {
+        name: dto.name ?? undefined,
+        code: dto.code ?? undefined,
+        description: dto.description ?? undefined,
+        unit: dto.unit ?? undefined,
+        defaultRate: dto.defaultRate === undefined ? undefined : this.toDecimalValue(dto.defaultRate),
+        contractRatesJson: dto.contractRates === undefined ? undefined : JSON.stringify(this.normalizeStringMap(dto.contractRates))
+      }
+    });
+    return this.serializeQuoteItem(item);
   }
 
   private buildScheduling(
@@ -493,6 +579,46 @@ export class JobsService {
     }
 
     return "NOT_STARTED";
+  }
+
+  private parseStringMap(value?: string) {
+    if (!value) {
+      return {} as Record<string, string>;
+    }
+
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      return this.normalizeStringMap(parsed);
+    } catch {
+      return {} as Record<string, string>;
+    }
+  }
+
+  private normalizeStringMap(value?: Record<string, unknown>) {
+    return Object.fromEntries(
+      Object.entries(value ?? {})
+        .filter(([key, entry]) => Boolean(key) && (typeof entry === "string" || typeof entry === "number"))
+        .map(([key, entry]) => [key, String(entry)])
+    ) as Record<string, string>;
+  }
+
+  private toDecimalValue(value?: string) {
+    if (!value || Number.isNaN(Number(value))) {
+      return "0";
+    }
+
+    return Number(value).toFixed(2);
+  }
+
+  private serializeQuoteItem(item: {
+    defaultRate: { toString(): string };
+    contractRatesJson: string;
+  } & Record<string, unknown>) {
+    return {
+      ...item,
+      defaultRate: item.defaultRate.toString(),
+      contractRates: this.parseStringMap(item.contractRatesJson)
+    };
   }
 
 }

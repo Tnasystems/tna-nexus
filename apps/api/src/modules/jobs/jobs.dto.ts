@@ -107,3 +107,52 @@ export class CreateJobDto {
 }
 
 export class UpdateJobDto extends PartialType(CreateJobDto) {}
+
+export class CreateContractDto {
+  @ApiProperty()
+  @IsString()
+  name!: string;
+
+  @ApiProperty()
+  @IsString()
+  code!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class UpdateContractDto extends PartialType(CreateContractDto) {}
+
+export class CreateQuoteItemDto {
+  @ApiProperty()
+  @IsString()
+  name!: string;
+
+  @ApiProperty()
+  @IsString()
+  code!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  defaultRate?: string;
+
+  @ApiProperty({ required: false, type: Object })
+  @IsOptional()
+  @IsObject()
+  contractRates?: Record<string, string>;
+}
+
+export class UpdateQuoteItemDto extends PartialType(CreateQuoteItemDto) {}

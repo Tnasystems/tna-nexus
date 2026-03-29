@@ -4175,7 +4175,6 @@ export function VehiclesPage() {
   return (
     <AssetManagementWorkspace
       description="Manage company vehicles, service dates, and fleet readiness for job allocation."
-      emptyMessage="No assets have been added yet."
       itemLabel="vehicle"
       kind="VEHICLE"
       emptyMessage="No vehicles have been added yet."

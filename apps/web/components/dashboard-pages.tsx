@@ -4144,6 +4144,7 @@ function QuotationLibraryPanel({
   const [selectedContractId, setSelectedContractId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [uploadingRates, setUploadingRates] = useState(false);
+  const [savingAllRates, setSavingAllRates] = useState(false);
   const [showCreateList, setShowCreateList] = useState(false);
   const [showEditList, setShowEditList] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
@@ -4248,6 +4249,43 @@ function QuotationLibraryPanel({
       setError(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Failed to save item rates.");
+    }
+  }
+
+  async function saveAllQuoteItemRates() {
+    if (!selectedContract) {
+      setError("Choose a rate list first.");
+      return;
+    }
+
+    try {
+      setSavingAllRates(true);
+      const updatedItems = await Promise.all(
+        visibleQuoteItems.map(async (item) => {
+          const updated = await apiRequest<QuoteCatalogItemRecord>(`jobs/quotation/items/${item.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              name: item.name,
+              code: item.code,
+              description: item.description,
+              unit: item.unit,
+              defaultRate: item.defaultRate,
+              contractRates: rateDrafts[item.id] ?? item.contractRates ?? {}
+            })
+          });
+
+          return { ...updated, contractRates: updated.contractRates ?? {} };
+        })
+      );
+
+      const updatedById = new Map(updatedItems.map((item) => [item.id, item]));
+      setQuoteItems((current) => current.map((item) => updatedById.get(item.id) ?? item));
+      setSuccess(`Saved ${updatedItems.length} row${updatedItems.length === 1 ? "" : "s"} for ${selectedContract.name}.`);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to save all item rates.");
+    } finally {
+      setSavingAllRates(false);
     }
   }
 
@@ -4576,7 +4614,16 @@ function QuotationLibraryPanel({
               <div>Unit</div>
               <div>Default</div>
               <div>{selectedContract ? `${selectedContract.name} Rate` : "Rate"}</div>
-              <div>Action</div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className="button button-subtle"
+                  disabled={!selectedContract || savingAllRates || visibleQuoteItems.length === 0}
+                  onClick={() => void saveAllQuoteItemRates()}
+                  type="button"
+                >
+                  {savingAllRates ? "Saving..." : "Save All Rows"}
+                </button>
+              </div>
             </div>
             {visibleQuoteItems.map((item) => (
               <div
@@ -4612,9 +4659,11 @@ function QuotationLibraryPanel({
                   }}
                   value={selectedContract ? (rateDrafts[item.id]?.[selectedContract.id] ?? item.contractRates[selectedContract.id] ?? "") : ""}
                 />
-                <button className="button button-subtle" disabled={!selectedContract} onClick={() => void saveQuoteItemRates(item)} type="button">
-                  Save Row
-                </button>
+                <div className="muted" style={{ textAlign: "right" }}>
+                  {selectedContract && (rateDrafts[item.id]?.[selectedContract.id] ?? item.contractRates[selectedContract.id] ?? "") !== (item.contractRates[selectedContract.id] ?? "")
+                    ? "Edited"
+                    : "Saved"}
+                </div>
               </div>
             ))}
             {visibleQuoteItems.length === 0 ? <div className="muted" style={{ paddingTop: 12 }}>No rate items match this search.</div> : null}

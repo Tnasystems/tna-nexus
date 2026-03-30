@@ -51,12 +51,13 @@ function TextField({
 function TextAreaField({
   label,
   value,
-  onChange
-}: Readonly<{ label: string; value: string; onChange: (value: string) => void }>) {
+  onChange,
+  rows = 6
+}: Readonly<{ label: string; value: string; onChange: (value: string) => void; rows?: number }>) {
   return (
     <label className="field">
       <span>{label}</span>
-      <textarea className="input" onChange={(event) => onChange(event.target.value)} rows={6} value={value} />
+      <textarea className="input" onChange={(event) => onChange(event.target.value)} rows={rows} value={value} />
     </label>
   );
 }
@@ -504,6 +505,91 @@ function QuoteItemSelector({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function QuoteLineItemsTable({
+  editable,
+  items,
+  onRemoveItem,
+  onUpdateItem,
+  title
+}: Readonly<{
+  editable: boolean;
+  items: QuoteLineItem[];
+  onRemoveItem?: (itemId: string) => void;
+  onUpdateItem?: (itemId: string, key: keyof QuoteLineItem, value: string) => void;
+  title: string;
+}>) {
+  return (
+    <div className="panel" style={{ padding: 20 }}>
+      <div style={{ fontWeight: 800, marginBottom: 16 }}>{title}</div>
+      <div style={{ overflowX: "auto" }}>
+        <div style={{ minWidth: 1040 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px 220px 1fr 90px 90px 110px 120px",
+              gap: 12,
+              padding: "0 0 10px",
+              borderBottom: "1px solid var(--line)",
+              fontWeight: 700
+            }}
+          >
+            <div>Code</div>
+            <div>Item</div>
+            <div>Description</div>
+            <div>Qty</div>
+            <div>Unit</div>
+            <div>Rate</div>
+            <div>Action</div>
+          </div>
+          {items.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "140px 220px 1fr 90px 90px 110px 120px",
+                gap: 12,
+                padding: "12px 0",
+                borderBottom: "1px solid var(--line)",
+                alignItems: "start"
+              }}
+            >
+              <div className="muted">{item.code || "Custom"}</div>
+              {editable && onUpdateItem ? (
+                <input className="input" onChange={(event) => onUpdateItem(item.id, "title", event.target.value)} value={item.title} />
+              ) : (
+                <div>{item.title || "Untitled item"}</div>
+              )}
+              {editable && onUpdateItem ? (
+                <textarea className="input" onChange={(event) => onUpdateItem(item.id, "description", event.target.value)} rows={2} value={item.description} />
+              ) : (
+                <div className="muted" style={{ whiteSpace: "pre-wrap" }}>{item.description || "-"}</div>
+              )}
+              {editable && onUpdateItem ? (
+                <input className="input" onChange={(event) => onUpdateItem(item.id, "quantity", event.target.value)} value={item.quantity} />
+              ) : (
+                <div>{item.quantity}</div>
+              )}
+              {editable && onUpdateItem ? (
+                <input className="input" onChange={(event) => onUpdateItem(item.id, "unit", event.target.value)} value={item.unit} />
+              ) : (
+                <div>{item.unit}</div>
+              )}
+              {editable && onUpdateItem ? (
+                <input className="input" onChange={(event) => onUpdateItem(item.id, "unitPrice", event.target.value)} value={item.unitPrice} />
+              ) : (
+                <div>{item.unitPrice}</div>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                {editable && onRemoveItem ? <button className="button button-subtle" onClick={() => onRemoveItem(item.id)} type="button">Remove</button> : <div className="muted">Added</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1289,6 +1375,12 @@ export function CreateJobPage() {
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [quoteItemSearchTerm, setQuoteItemSearchTerm] = useState("");
+  const [quoteFieldVisibility, setQuoteFieldVisibility] = useState({
+    reference: true,
+    scope: true,
+    assumptions: false,
+    exclusions: false
+  });
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
@@ -1685,10 +1777,27 @@ export function CreateJobPage() {
                         </select>
                         <span className="muted" style={{ fontSize: 12 }}>Select the customer rate list to price the quotation items.</span>
                       </label>
-                      <TextField label="Quotation reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
-                      <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
-                      <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
-                      <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {[
+                          ["reference", "Reference"],
+                          ["scope", "Scope of works"],
+                          ["assumptions", "Assumptions"],
+                          ["exclusions", "Exclusions"]
+                        ].map(([key, label]) => (
+                          <button
+                            key={key}
+                            className={quoteFieldVisibility[key as keyof typeof quoteFieldVisibility] ? "button" : "button button-subtle"}
+                            onClick={() => setQuoteFieldVisibility((current) => ({ ...current, [key]: !current[key as keyof typeof current] }))}
+                            type="button"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {quoteFieldVisibility.reference ? <TextField label="Quotation reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} /> : null}
+                      {quoteFieldVisibility.scope ? <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} rows={3} value={quotation.scope} /> : null}
+                      {quoteFieldVisibility.assumptions ? <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} rows={3} value={quotation.assumptions} /> : null}
+                      {quoteFieldVisibility.exclusions ? <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} rows={3} value={quotation.exclusions} /> : null}
                       <QuoteItemSelector
                         contractId={quotation.contractId}
                         emptyMessage="No rate items match this search."
@@ -1697,23 +1806,13 @@ export function CreateJobPage() {
                         searchTerm={quoteItemSearchTerm}
                         setSearchTerm={setQuoteItemSearchTerm}
                       />
-                      <div className="stack">
-                        {quotation.items.map((item) => (
-                          <div key={item.id} className="panel" style={{ padding: 14 }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 1fr", gap: 12 }}>
-                              <TextField label="Item" onChange={(value) => updateQuotationItemInCreate(item.id, "title", value)} value={item.title} />
-                              <TextField label="Qty" onChange={(value) => updateQuotationItemInCreate(item.id, "quantity", value)} value={item.quantity} />
-                              <TextField label="Unit" onChange={(value) => updateQuotationItemInCreate(item.id, "unit", value)} value={item.unit} />
-                              <TextField label="Rate" onChange={(value) => updateQuotationItemInCreate(item.id, "unitPrice", value)} value={item.unitPrice} />
-                            </div>
-                            <TextAreaField label="Description" onChange={(value) => updateQuotationItemInCreate(item.id, "description", value)} value={item.description} />
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                              <div className="muted">{item.code || "Custom item"}</div>
-                              <button className="button button-subtle" onClick={() => removeQuotationItemInCreate(item.id)} type="button">Remove item</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <QuoteLineItemsTable
+                        editable
+                        items={quotation.items}
+                        onRemoveItem={removeQuotationItemInCreate}
+                        onUpdateItem={updateQuotationItemInCreate}
+                        title="Quote items"
+                      />
                       <TextField label="Quoted total" onChange={(value) => setQuotation((current) => ({ ...current, totalAmount: value }))} value={quotation.totalAmount} />
                     </div>
                   </div>
@@ -1919,6 +2018,19 @@ export function JobRecordPage({
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
   const [quoteItemSearchTerm, setQuoteItemSearchTerm] = useState("");
   const [revisionQuoteItemSearchTerm, setRevisionQuoteItemSearchTerm] = useState("");
+  const [initialQuoteFieldVisibility, setInitialQuoteFieldVisibility] = useState({
+    reference: true,
+    scope: true,
+    assumptions: false,
+    exclusions: false
+  });
+  const [revisionFieldVisibility, setRevisionFieldVisibility] = useState({
+    reference: true,
+    scope: true,
+    assumptions: false,
+    exclusions: false,
+    revisionNotes: true
+  });
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -2565,11 +2677,29 @@ export function JobRecordPage({
                                 </label>
                                 {canManage ? (
                                   <>
-                                    <TextField label="Reference" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, reference: value }))} value={activeRevision.reference} />
-                                    <TextAreaField label="Scope of works" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, scope: value }))} value={activeRevision.scope} />
-                                    <TextAreaField label="Assumptions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, assumptions: value }))} value={activeRevision.assumptions} />
-                                    <TextAreaField label="Exclusions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, exclusions: value }))} value={activeRevision.exclusions} />
-                                    <TextAreaField label="Revision notes" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, note: value }))} value={activeRevision.note} />
+                                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                      {[
+                                        ["reference", "Reference"],
+                                        ["scope", "Scope of works"],
+                                        ["assumptions", "Assumptions"],
+                                        ["exclusions", "Exclusions"],
+                                        ["revisionNotes", "Revision notes"]
+                                      ].map(([key, label]) => (
+                                        <button
+                                          key={key}
+                                          className={revisionFieldVisibility[key as keyof typeof revisionFieldVisibility] ? "button" : "button button-subtle"}
+                                          onClick={() => setRevisionFieldVisibility((current) => ({ ...current, [key]: !current[key as keyof typeof current] }))}
+                                          type="button"
+                                        >
+                                          {label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    {revisionFieldVisibility.reference ? <TextField label="Reference" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, reference: value }))} value={activeRevision.reference} /> : null}
+                                    {revisionFieldVisibility.scope ? <TextAreaField label="Scope of works" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, scope: value }))} rows={3} value={activeRevision.scope} /> : null}
+                                    {revisionFieldVisibility.assumptions ? <TextAreaField label="Assumptions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, assumptions: value }))} rows={3} value={activeRevision.assumptions} /> : null}
+                                    {revisionFieldVisibility.exclusions ? <TextAreaField label="Exclusions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, exclusions: value }))} rows={3} value={activeRevision.exclusions} /> : null}
+                                    {revisionFieldVisibility.revisionNotes ? <TextAreaField label="Revision notes" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, note: value }))} rows={3} value={activeRevision.note} /> : null}
                                     <QuoteItemSelector
                                       contractId={activeRevision.contractId}
                                       emptyMessage="No rate items match this search."
@@ -2627,10 +2757,27 @@ export function JobRecordPage({
                                 </select>
                                 <span className="muted" style={{ fontSize: 12 }}>Select the customer rate list from the dropdown.</span>
                               </label>
-                              <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
-                              <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
-                              <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
-                              <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
+                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                {[
+                                  ["reference", "Reference"],
+                                  ["scope", "Scope of works"],
+                                  ["assumptions", "Assumptions"],
+                                  ["exclusions", "Exclusions"]
+                                ].map(([key, label]) => (
+                                  <button
+                                    key={key}
+                                    className={initialQuoteFieldVisibility[key as keyof typeof initialQuoteFieldVisibility] ? "button" : "button button-subtle"}
+                                    onClick={() => setInitialQuoteFieldVisibility((current) => ({ ...current, [key]: !current[key as keyof typeof current] }))}
+                                    type="button"
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              {initialQuoteFieldVisibility.reference ? <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} /> : null}
+                              {initialQuoteFieldVisibility.scope ? <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} rows={3} value={quotation.scope} /> : null}
+                              {initialQuoteFieldVisibility.assumptions ? <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} rows={3} value={quotation.assumptions} /> : null}
+                              {initialQuoteFieldVisibility.exclusions ? <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} rows={3} value={quotation.exclusions} /> : null}
                               <QuoteItemSelector
                                 contractId={quotation.contractId}
                                 emptyMessage="No rate items match this search."
@@ -2651,53 +2798,13 @@ export function JobRecordPage({
                           )}
                         </div>
 
-                        <div className="panel" style={{ padding: 20 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                            <div style={{ fontWeight: 800 }}>{quoteStage === "initial" ? "Initial quote items" : "Revision items"}</div>
-                            {canManage && quoteStage === "initial" ? <button className="button button-subtle" onClick={addQuotationItem} type="button">Add line item</button> : null}
-                          </div>
-                          <div className="stack">
-                            {(quoteStage === "revision" && activeRevision ? activeRevision.items : quotation.items).map((item) => (
-                              <div key={item.id} className="panel" style={{ padding: 16 }}>
-                                {canManage && quoteStage === "initial" ? (
-                                  <div className="stack">
-                                    <TextField label="Title" onChange={(value) => updateQuotationItem(item.id, "title", value)} value={item.title} />
-                                    <TextAreaField label="Description" onChange={(value) => updateQuotationItem(item.id, "description", value)} value={item.description} />
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                                      <TextField label="Quantity" onChange={(value) => updateQuotationItem(item.id, "quantity", value)} value={item.quantity} />
-                                      <TextField label="Unit" onChange={(value) => updateQuotationItem(item.id, "unit", value)} value={item.unit} />
-                                      <TextField label="Unit price" onChange={(value) => updateQuotationItem(item.id, "unitPrice", value)} value={item.unitPrice} />
-                                    </div>
-                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                                      <div className="muted">{item.code || "Custom item"}</div>
-                                      <button className="button button-subtle" onClick={() => removeQuotationItem(item.id)} type="button">Remove line item</button>
-                                    </div>
-                                  </div>
-                                ) : canManage && quoteStage === "revision" && activeRevision ? (
-                                  <div className="stack">
-                                    <TextField label="Title" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "title", value)} value={item.title} />
-                                    <TextAreaField label="Description" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "description", value)} value={item.description} />
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                                      <TextField label="Quantity" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "quantity", value)} value={item.quantity} />
-                                      <TextField label="Unit" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "unit", value)} value={item.unit} />
-                                      <TextField label="Unit price" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "unitPrice", value)} value={item.unitPrice} />
-                                    </div>
-                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                                      <div className="muted">{item.code || "Custom item"}</div>
-                                      <button className="button button-subtle" onClick={() => removeRevisionItem(activeRevision.id, item.id)} type="button">Remove line item</button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="stack" style={{ gap: 8 }}>
-                                    <div style={{ fontWeight: 700 }}>{item.title || "Untitled item"}</div>
-                                    <div className="muted" style={{ whiteSpace: "pre-wrap" }}>{item.description || "No description."}</div>
-                                    <div>{item.quantity} {item.unit} at {item.unitPrice}</div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                        <QuoteLineItemsTable
+                          editable={canManage}
+                          items={quoteStage === "revision" && activeRevision ? activeRevision.items : quotation.items}
+                          onRemoveItem={quoteStage === "revision" && activeRevision ? (itemId) => removeRevisionItem(activeRevision.id, itemId) : removeQuotationItem}
+                          onUpdateItem={quoteStage === "revision" && activeRevision ? (itemId, key, value) => updateRevisionItem(activeRevision.id, itemId, key, value) : updateQuotationItem}
+                          title={quoteStage === "initial" ? "Initial quote items" : "Revision items"}
+                        />
 
                         {canManage ? (
                           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

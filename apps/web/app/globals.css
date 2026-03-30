@@ -1,4 +1,5 @@
-:root {
+:root,
+:root[data-theme="dark"] {
   --bg: #09131f;
   --bg-alt: #0f1d2d;
   --panel: rgba(12, 24, 38, 0.88);
@@ -16,18 +17,16 @@
   --font-sans: "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #eef3f7;
-    --bg-alt: #ffffff;
-    --panel: rgba(255, 255, 255, 0.92);
-    --panel-strong: #ffffff;
-    --line: rgba(15, 23, 42, 0.08);
-    --text: #102033;
-    --muted: #5c7085;
-    --accent-soft: rgba(255, 122, 26, 0.12);
-    --shadow: 0 30px 60px rgba(15, 23, 42, 0.08);
-  }
+:root[data-theme="light"] {
+  --bg: #eef3f7;
+  --bg-alt: #ffffff;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-strong: #ffffff;
+  --line: rgba(15, 23, 42, 0.08);
+  --text: #102033;
+  --muted: #5c7085;
+  --accent-soft: rgba(255, 122, 26, 0.12);
+  --shadow: 0 30px 60px rgba(15, 23, 42, 0.08);
 }
 
 * {

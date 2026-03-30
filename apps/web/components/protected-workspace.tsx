@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { readSession, type AppSession } from "../lib/auth";
+import { applyThemePreference, readThemePreference } from "../lib/theme";
 import { WorkspaceShell } from "./workspace-shell";
 
 function operativeAllowedPath(pathname: string) {
   return pathname === "/dashboard/calendar" ||
     pathname === "/dashboard/jobs" ||
-    pathname.startsWith("/dashboard/jobs/");
+    pathname.startsWith("/dashboard/jobs/") ||
+    pathname === "/dashboard/settings";
 }
 
 export function ProtectedWorkspace({
@@ -25,6 +27,10 @@ export function ProtectedWorkspace({
   const pathname = usePathname();
   const router = useRouter();
   const [session, setSession] = useState<AppSession | null>(null);
+
+  useEffect(() => {
+    applyThemePreference(readThemePreference());
+  }, []);
 
   useEffect(() => {
     const nextSession = readSession();

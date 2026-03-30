@@ -75,6 +75,7 @@ export function WorkspaceShell({
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <Link className="badge" href="/">Home</Link>
+                <Link className="badge" href="/dashboard/settings">Settings</Link>
                 <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a>
                 {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
               </div>

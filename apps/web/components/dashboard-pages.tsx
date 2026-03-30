@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ProtectedWorkspace } from "./protected-workspace";
 import { apiRequest, apiRequestBlob } from "../lib/api";
 import { buildSession, persistSession, type AppSession, type AuthTokenResponse } from "../lib/auth";
+import { applyThemePreference, persistThemePreference, readThemePreference, type ThemePreference } from "../lib/theme";
 import { JOB_STATUS_VALUES, ROLE_VALUES } from "@tna-nexus/shared";
 
 function PanelGrid({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -419,6 +420,92 @@ function getCatalogRate(item: QuoteCatalogItemRecord, contractId: string) {
 
 function getRateListName(contracts: ContractRecord[], contractId: string) {
   return contracts.find((contract) => contract.id === contractId)?.name || "Not set";
+}
+
+function QuoteItemSelector({
+  contractId,
+  emptyMessage,
+  onAddItem,
+  quoteItems,
+  searchTerm,
+  setSearchTerm
+}: Readonly<{
+  contractId: string;
+  emptyMessage: string;
+  onAddItem: (itemId: string) => void;
+  quoteItems: QuoteCatalogItemRecord[];
+  searchTerm: string;
+  setSearchTerm: (value: string) => void;
+}>) {
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleItems = normalizedSearchTerm
+    ? quoteItems.filter((item) => (
+      item.code.toLowerCase().includes(normalizedSearchTerm) ||
+      item.name.toLowerCase().includes(normalizedSearchTerm) ||
+      item.description.toLowerCase().includes(normalizedSearchTerm)
+    ))
+    : quoteItems;
+
+  return (
+    <div className="field">
+      <span>Add quoteable item</span>
+      {!contractId ? <div className="muted">Select a rate list first.</div> : null}
+      {contractId ? (
+        <div className="panel" style={{ padding: 12, overflowX: "auto" }}>
+          <div className="stack" style={{ gap: 12 }}>
+            <label className="field">
+              <span>Search rate items</span>
+              <input className="input" onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by code, item, or description" type="search" value={searchTerm} />
+            </label>
+            <div style={{ minWidth: 840 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 220px 1fr 100px 120px",
+                  gap: 12,
+                  padding: "0 0 10px",
+                  borderBottom: "1px solid var(--line)",
+                  fontWeight: 700
+                }}
+              >
+                <div>Code</div>
+                <div>Item</div>
+                <div>Description</div>
+                <div>Unit</div>
+                <div>Rate</div>
+              </div>
+              {visibleItems.map((item) => (
+                <button
+                  key={item.id}
+                  className="button button-subtle"
+                  onClick={() => onAddItem(item.id)}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "140px 220px 1fr 100px 120px",
+                    gap: 12,
+                    width: "100%",
+                    borderRadius: 14,
+                    padding: "12px 14px",
+                    marginTop: 10,
+                    justifyContent: "stretch",
+                    textAlign: "left"
+                  }}
+                  type="button"
+                >
+                  <span>{item.code}</span>
+                  <span>{item.name}</span>
+                  <span className="muted">{item.description || "-"}</span>
+                  <span>{item.unit}</span>
+                  <span>{getCatalogRate(item, contractId)}</span>
+                </button>
+              ))}
+              {visibleItems.length === 0 ? <div className="muted" style={{ paddingTop: 12 }}>{emptyMessage}</div> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function escapeCsvValue(value: string) {
@@ -1201,7 +1288,7 @@ export function CreateJobPage() {
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedOperativeId, setSelectedOperativeId] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
-  const [selectedQuoteItemId, setSelectedQuoteItemId] = useState("");
+  const [quoteItemSearchTerm, setQuoteItemSearchTerm] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
@@ -1356,12 +1443,12 @@ export function CreateJobPage() {
     }));
   }
 
-  function addQuoteItemFromCatalog() {
-    if (!selectedQuoteItemId) {
+  function addQuoteItemFromCatalog(itemId: string) {
+    if (!itemId) {
       return;
     }
 
-    const matchedItem = quoteItems.find((item) => item.id === selectedQuoteItemId);
+    const matchedItem = quoteItems.find((item) => item.id === itemId);
     if (!matchedItem) {
       return;
     }
@@ -1387,7 +1474,6 @@ export function CreateJobPage() {
         totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
       };
     });
-    setSelectedQuoteItemId("");
   }
 
   function updateQuotationItemInCreate(itemId: string, key: keyof QuoteLineItem, value: string) {
@@ -1603,21 +1689,14 @@ export function CreateJobPage() {
                       <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
                       <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
                       <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
-                      <div className="field">
-                        <span>Add quoteable item</span>
-                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-                          <label className="field" style={{ flex: "1 1 280px" }}>
-                            <span>Rate item</span>
-                            <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
-                              <option value="">Choose an item</option>
-                              {quoteItems.map((item) => (
-                                <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <button className="button button-subtle" onClick={addQuoteItemFromCatalog} type="button">Add item</button>
-                        </div>
-                      </div>
+                      <QuoteItemSelector
+                        contractId={quotation.contractId}
+                        emptyMessage="No rate items match this search."
+                        onAddItem={addQuoteItemFromCatalog}
+                        quoteItems={quoteItems}
+                        searchTerm={quoteItemSearchTerm}
+                        setSearchTerm={setQuoteItemSearchTerm}
+                      />
                       <div className="stack">
                         {quotation.items.map((item) => (
                           <div key={item.id} className="panel" style={{ padding: 14 }}>
@@ -1838,7 +1917,8 @@ export function JobRecordPage({
   const [quoteStage, setQuoteStage] = useState<"initial" | "revision" | "final">("initial");
   const [selectedRevisionId, setSelectedRevisionId] = useState("");
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
-  const [selectedQuoteItemId, setSelectedQuoteItemId] = useState("");
+  const [quoteItemSearchTerm, setQuoteItemSearchTerm] = useState("");
+  const [revisionQuoteItemSearchTerm, setRevisionQuoteItemSearchTerm] = useState("");
   const [form, setForm] = useState<{
     title: string;
     companyJobNumber: string;
@@ -2290,12 +2370,12 @@ export function JobRecordPage({
     });
   }
 
-  function addQuoteItemToRevisionFromLibrary(revisionId: string) {
-    if (!selectedQuoteItemId) {
+  function addQuoteItemToRevisionFromLibrary(revisionId: string, itemId: string) {
+    if (!itemId) {
       return;
     }
 
-    const matchedItem = quoteItems.find((item) => item.id === selectedQuoteItemId);
+    const matchedItem = quoteItems.find((item) => item.id === itemId);
     if (!matchedItem) {
       return;
     }
@@ -2321,15 +2401,14 @@ export function JobRecordPage({
         totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
       };
     });
-    setSelectedQuoteItemId("");
   }
 
-  function addQuoteItemFromLibrary() {
-    if (!selectedQuoteItemId) {
+  function addQuoteItemFromLibrary(itemId: string) {
+    if (!itemId) {
       return;
     }
 
-    const matchedItem = quoteItems.find((item) => item.id === selectedQuoteItemId);
+    const matchedItem = quoteItems.find((item) => item.id === itemId);
     if (!matchedItem) {
       return;
     }
@@ -2355,7 +2434,6 @@ export function JobRecordPage({
         totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
       };
     });
-    setSelectedQuoteItemId("");
   }
 
   const activeRevision = quotationRevisions.find((revision) => revision.id === selectedRevisionId) ?? null;
@@ -2492,24 +2570,15 @@ export function JobRecordPage({
                                     <TextAreaField label="Assumptions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, assumptions: value }))} value={activeRevision.assumptions} />
                                     <TextAreaField label="Exclusions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, exclusions: value }))} value={activeRevision.exclusions} />
                                     <TextAreaField label="Revision notes" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, note: value }))} value={activeRevision.note} />
-                                    <div className="field">
-                                      <span>Add quoteable item</span>
-                                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-                                        <label className="field" style={{ flex: "1 1 280px" }}>
-                                          <span>Rate item</span>
-                                          <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
-                                            <option value="">Choose an item</option>
-                                            {quoteItems.map((item) => (
-                                              <option key={item.id} value={item.id}>
-                                                {item.code} - {item.name} ({getCatalogRate(item, activeRevision.contractId || contracts[0]?.id || "")})
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </label>
-                                        <button className="button button-subtle" onClick={() => addQuoteItemToRevisionFromLibrary(activeRevision.id)} type="button">Add item</button>
-                                        <button className="button button-subtle" onClick={() => addRevisionItem(activeRevision.id)} type="button">Add custom item</button>
-                                      </div>
-                                    </div>
+                                    <QuoteItemSelector
+                                      contractId={activeRevision.contractId}
+                                      emptyMessage="No rate items match this search."
+                                      onAddItem={(itemId) => addQuoteItemToRevisionFromLibrary(activeRevision.id, itemId)}
+                                      quoteItems={quoteItems}
+                                      searchTerm={revisionQuoteItemSearchTerm}
+                                      setSearchTerm={setRevisionQuoteItemSearchTerm}
+                                    />
+                                    <button className="button button-subtle" onClick={() => addRevisionItem(activeRevision.id)} type="button">Add custom item</button>
                                   </>
                                 ) : (
                                   <div className="stack">
@@ -2562,24 +2631,15 @@ export function JobRecordPage({
                               <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
                               <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
                               <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
-                              <div className="field">
-                                <span>Add quoteable item</span>
-                                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-                                  <label className="field" style={{ flex: "1 1 280px" }}>
-                                    <span>Rate item</span>
-                                    <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
-                                      <option value="">Choose an item</option>
-                                      {quoteItems.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                          {item.code} - {item.name} ({getCatalogRate(item, quotation.contractId || contracts[0]?.id || "")})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                  <button className="button button-subtle" onClick={addQuoteItemFromLibrary} type="button">Add item</button>
-                                  <button className="button button-subtle" onClick={addQuotationItem} type="button">Add custom item</button>
-                                </div>
-                              </div>
+                              <QuoteItemSelector
+                                contractId={quotation.contractId}
+                                emptyMessage="No rate items match this search."
+                                onAddItem={addQuoteItemFromLibrary}
+                                quoteItems={quoteItems}
+                                searchTerm={quoteItemSearchTerm}
+                                setSearchTerm={setQuoteItemSearchTerm}
+                              />
+                              <button className="button button-subtle" onClick={addQuotationItem} type="button">Add custom item</button>
                             </div>
                           ) : (
                             <div className="stack">
@@ -5147,6 +5207,54 @@ export function ReportingPage() {
             ))}
           </section>
         </>
+      )}
+    </ProtectedWorkspace>
+  );
+}
+
+export function SettingsPage() {
+  const [theme, setTheme] = useState<ThemePreference>("dark");
+  const [saved, setSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    const currentTheme = readThemePreference();
+    setTheme(currentTheme);
+    applyThemePreference(currentTheme);
+  }, []);
+
+  function handleSaveTheme() {
+    persistThemePreference(theme);
+    setSaved(`Theme updated to ${theme === "light" ? "Light Mode" : "Dark Mode"}.`);
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Choose how the workspace looks for your account on this device." title="Settings">
+      {() => (
+        <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+          <div className="panel" style={{ padding: 24 }}>
+            <div style={{ fontWeight: 800, marginBottom: 16 }}>Appearance</div>
+            <div className="stack">
+              <label className="field">
+                <span>Theme</span>
+                <select className="input" onChange={(event) => setTheme(event.target.value as ThemePreference)} value={theme}>
+                  <option value="dark">Dark Mode</option>
+                  <option value="light">Light Mode</option>
+                </select>
+              </label>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button className="button" onClick={handleSaveTheme} type="button">Save Settings</button>
+              </div>
+              {saved ? <div className="callout">{saved}</div> : null}
+            </div>
+          </div>
+          <div className="panel" style={{ padding: 24 }}>
+            <div style={{ fontWeight: 800, marginBottom: 16 }}>Theme notes</div>
+            <div className="stack" style={{ gap: 12 }}>
+              <div className="callout">Dark Mode remains the default so the current look stays as-is for existing users.</div>
+              <div className="callout">Light Mode is saved on this device, so each person can choose their preferred view.</div>
+            </div>
+          </div>
+        </div>
       )}
     </ProtectedWorkspace>
   );

@@ -4104,6 +4104,9 @@ function QuotationLibraryPanel({
   const [selectedContractId, setSelectedContractId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [uploadingRates, setUploadingRates] = useState(false);
+  const [showCreateList, setShowCreateList] = useState(false);
+  const [showEditList, setShowEditList] = useState(false);
+  const [showAddItem, setShowAddItem] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -4141,6 +4144,8 @@ function QuotationLibraryPanel({
       });
       setContracts((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedContractId(created.id);
+      setShowCreateList(false);
+      setShowEditList(false);
       setContractForm({ name: "", code: "", description: "" });
       setSuccess("Rate list added.");
       setError(null);
@@ -4157,6 +4162,7 @@ function QuotationLibraryPanel({
         body: JSON.stringify(itemForm)
       });
       setQuoteItems((current) => [...current, { ...created, contractRates: created.contractRates ?? {} }].sort((a, b) => a.name.localeCompare(b.name)));
+      setShowAddItem(false);
       setItemForm({ name: "", code: "", description: "", unit: "item", defaultRate: "0.00" });
       setSuccess("Quote item added.");
       setError(null);
@@ -4176,6 +4182,7 @@ function QuotationLibraryPanel({
         })
       });
       setContracts((current) => current.map((entry) => entry.id === contract.id ? updated : entry).sort((a, b) => a.name.localeCompare(b.name)));
+      setShowEditList(false);
       setSuccess(`Saved rate list ${updated.name}.`);
       setError(null);
     } catch (caughtError) {
@@ -4354,32 +4361,65 @@ function QuotationLibraryPanel({
       {success ? <div className="callout" style={{ marginBottom: 12 }}>{success}</div> : null}
       <div className="stack">
         <div className="panel" style={{ padding: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(200px, 1fr) auto auto", gap: 12, alignItems: "end" }}>
-            <label className="field">
-              <span>Rate list dropdown</span>
-              <select className="input" onChange={(event) => setSelectedContractId(event.target.value)} value={selectedContractId}>
-                <option value="">Choose a rate list</option>
-                {contracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>{contract.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Search items</span>
-              <input className="input" onChange={(event) => setSearchTerm(event.target.value)} placeholder="Code, item, or description" type="search" value={searchTerm} />
-            </label>
-            <button className="button button-subtle" onClick={downloadSelectedRateList} type="button">Download CSV</button>
-            <label
-              className="button button-subtle"
-              style={{
-                justifyContent: "center",
-                cursor: uploadingRates || !selectedContract ? "not-allowed" : "pointer",
-                opacity: !selectedContract ? 0.6 : 1
-              }}
-            >
-              {uploadingRates ? "Uploading..." : "Upload CSV"}
-              <input accept=".csv,text/csv" disabled={!selectedContract || uploadingRates} hidden onChange={(event) => void importRateListFile(event)} type="file" />
-            </label>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "end", flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(220px, 1fr)", gap: 12, flex: "1 1 520px" }}>
+              <label className="field">
+                <span>Rate list dropdown</span>
+                <select className="input" onChange={(event) => setSelectedContractId(event.target.value)} value={selectedContractId}>
+                  <option value="">Choose a rate list</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>{contract.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Search items</span>
+                <input className="input" onChange={(event) => setSearchTerm(event.target.value)} placeholder="Code, item, or description" type="search" value={searchTerm} />
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button
+                className="button button-subtle"
+                onClick={() => {
+                  setShowCreateList((current) => !current);
+                  setShowEditList(false);
+                  setShowAddItem(false);
+                }}
+                type="button"
+              >
+                Create New List
+              </button>
+              <button
+                className="button button-subtle"
+                disabled={!selectedContract}
+                onClick={() => {
+                  if (!selectedContract) {
+                    return;
+                  }
+                  setShowEditList((current) => !current);
+                  setShowCreateList(false);
+                  setShowAddItem(false);
+                }}
+                type="button"
+              >
+                Edit Current List
+              </button>
+              <button
+                className="button button-subtle"
+                disabled={!selectedContract}
+                onClick={() => {
+                  if (!selectedContract) {
+                    return;
+                  }
+                  setShowAddItem((current) => !current);
+                  setShowCreateList(false);
+                  setShowEditList(false);
+                }}
+                type="button"
+              >
+                Add Item To The List
+              </button>
+            </div>
           </div>
           <div className="muted" style={{ marginTop: 10 }}>
             {selectedContract
@@ -4388,72 +4428,94 @@ function QuotationLibraryPanel({
           </div>
         </div>
 
-        <div className="panel" style={{ padding: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 12 }}>Rate list details</div>
-          {selectedContract ? (
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr auto", gap: 12, alignItems: "start" }}>
-              <input
-                className="input"
-                onChange={(event) => setContractDrafts((current) => ({
-                  ...current,
-                  [selectedContract.id]: {
-                    ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
-                    name: event.target.value
-                  }
-                }))}
-                value={contractDrafts[selectedContract.id]?.name ?? selectedContract.name}
-              />
-              <input
-                className="input"
-                onChange={(event) => setContractDrafts((current) => ({
-                  ...current,
-                  [selectedContract.id]: {
-                    ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
-                    code: event.target.value
-                  }
-                }))}
-                value={contractDrafts[selectedContract.id]?.code ?? selectedContract.code}
-              />
-              <textarea
-                className="input"
-                onChange={(event) => setContractDrafts((current) => ({
-                  ...current,
-                  [selectedContract.id]: {
-                    ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
-                    description: event.target.value
-                  }
-                }))}
-                rows={2}
-                value={contractDrafts[selectedContract.id]?.description ?? selectedContract.description ?? ""}
-              />
-              <button className="button button-subtle" onClick={() => void saveContract(selectedContract)} type="button">Save List</button>
+        {showEditList ? (
+          <div className="panel" style={{ padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700 }}>Edit current list</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="button button-subtle" onClick={downloadSelectedRateList} type="button">Download CSV</button>
+                <label
+                  className="button button-subtle"
+                  style={{
+                    justifyContent: "center",
+                    cursor: uploadingRates || !selectedContract ? "not-allowed" : "pointer",
+                    opacity: !selectedContract ? 0.6 : 1
+                  }}
+                >
+                  {uploadingRates ? "Uploading..." : "Upload CSV"}
+                  <input accept=".csv,text/csv" disabled={!selectedContract || uploadingRates} hidden onChange={(event) => void importRateListFile(event)} type="file" />
+                </label>
+              </div>
             </div>
-          ) : (
-            <div className="muted">No rate list selected.</div>
-          )}
-        </div>
-
-        <form className="panel stack" onSubmit={createContract} style={{ padding: 16 }}>
-          <div style={{ fontWeight: 700 }}>Add new rate list</div>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr auto", gap: 12, alignItems: "start" }}>
-            <input className="input" onChange={(event) => setContractForm((current) => ({ ...current, name: event.target.value }))} placeholder="Customer or rate list name" value={contractForm.name} />
-            <input className="input" onChange={(event) => setContractForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" value={contractForm.code} />
-            <textarea className="input" onChange={(event) => setContractForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" rows={2} value={contractForm.description} />
-            <button className="button button-subtle" type="submit">Add List</button>
+            {selectedContract ? (
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr auto", gap: 12, alignItems: "start" }}>
+                <input
+                  className="input"
+                  onChange={(event) => setContractDrafts((current) => ({
+                    ...current,
+                    [selectedContract.id]: {
+                      ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
+                      name: event.target.value
+                    }
+                  }))}
+                  value={contractDrafts[selectedContract.id]?.name ?? selectedContract.name}
+                />
+                <input
+                  className="input"
+                  onChange={(event) => setContractDrafts((current) => ({
+                    ...current,
+                    [selectedContract.id]: {
+                      ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
+                      code: event.target.value
+                    }
+                  }))}
+                  value={contractDrafts[selectedContract.id]?.code ?? selectedContract.code}
+                />
+                <textarea
+                  className="input"
+                  onChange={(event) => setContractDrafts((current) => ({
+                    ...current,
+                    [selectedContract.id]: {
+                      ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
+                      description: event.target.value
+                    }
+                  }))}
+                  rows={2}
+                  value={contractDrafts[selectedContract.id]?.description ?? selectedContract.description ?? ""}
+                />
+                <button className="button button-subtle" onClick={() => void saveContract(selectedContract)} type="button">Save List</button>
+              </div>
+            ) : (
+              <div className="muted">No rate list selected.</div>
+            )}
           </div>
-        </form>
+        ) : null}
 
-        <form className="panel stack" onSubmit={createQuoteItem} style={{ padding: 16 }}>
-          <div style={{ fontWeight: 700 }}>Add rate item</div>
-          <div style={{ display: "grid", gridTemplateColumns: "180px 2fr 2fr 110px 110px auto", gap: 12, alignItems: "start" }}>
-            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" value={itemForm.code} />
-            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, name: event.target.value }))} placeholder="Item name" value={itemForm.name} />
-            <textarea className="input" onChange={(event) => setItemForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" rows={2} value={itemForm.description} />
-            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, unit: event.target.value }))} placeholder="Unit" value={itemForm.unit} />
-            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, defaultRate: event.target.value }))} placeholder="Default" value={itemForm.defaultRate} />
-            <button className="button button-subtle" type="submit">Add Item</button>
-          </div>
-        </form>
+        {showCreateList ? (
+          <form className="panel stack" onSubmit={createContract} style={{ padding: 16 }}>
+            <div style={{ fontWeight: 700 }}>Create new list</div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr auto", gap: 12, alignItems: "start" }}>
+              <input className="input" onChange={(event) => setContractForm((current) => ({ ...current, name: event.target.value }))} placeholder="Customer or rate list name" value={contractForm.name} />
+              <input className="input" onChange={(event) => setContractForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" value={contractForm.code} />
+              <textarea className="input" onChange={(event) => setContractForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" rows={2} value={contractForm.description} />
+              <button className="button button-subtle" type="submit">Create List</button>
+            </div>
+          </form>
+        ) : null}
+
+        {showAddItem ? (
+          <form className="panel stack" onSubmit={createQuoteItem} style={{ padding: 16 }}>
+            <div style={{ fontWeight: 700 }}>Add item to {selectedContract?.name || "list"}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "180px 2fr 2fr 110px 110px auto", gap: 12, alignItems: "start" }}>
+              <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" value={itemForm.code} />
+              <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, name: event.target.value }))} placeholder="Item name" value={itemForm.name} />
+              <textarea className="input" onChange={(event) => setItemForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" rows={2} value={itemForm.description} />
+              <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, unit: event.target.value }))} placeholder="Unit" value={itemForm.unit} />
+              <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, defaultRate: event.target.value }))} placeholder="Default" value={itemForm.defaultRate} />
+              <button className="button button-subtle" type="submit">Add Item</button>
+            </div>
+          </form>
+        ) : null}
 
         <div className="panel" style={{ padding: 12, overflowX: "auto" }}>
           <div style={{ minWidth: 1120 }}>

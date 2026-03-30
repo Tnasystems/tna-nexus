@@ -269,6 +269,11 @@ interface QuotationRevision {
   id: string;
   label: string;
   createdAt: string;
+  contractId: string;
+  reference: string;
+  scope: string;
+  exclusions: string;
+  assumptions: string;
   note: string;
   totalAmount: string;
   items: QuoteLineItem[];
@@ -364,7 +369,32 @@ function parseQuotation(value: string | null | undefined) {
 
 function parseQuotationRevisions(value: string | null | undefined) {
   const parsed = parseJsonObject<QuotationRevision[]>(value, []);
-  return Array.isArray(parsed) ? parsed : [];
+  return Array.isArray(parsed)
+    ? parsed.map((revision) => ({
+      id: typeof revision?.id === "string" && revision.id ? revision.id : crypto.randomUUID(),
+      label: typeof revision?.label === "string" ? revision.label : "Revision",
+      createdAt: typeof revision?.createdAt === "string" ? revision.createdAt : new Date().toISOString(),
+      contractId: typeof revision?.contractId === "string" ? revision.contractId : "",
+      reference: typeof revision?.reference === "string" ? revision.reference : "",
+      scope: typeof revision?.scope === "string" ? revision.scope : "",
+      exclusions: typeof revision?.exclusions === "string" ? revision.exclusions : "",
+      assumptions: typeof revision?.assumptions === "string" ? revision.assumptions : "",
+      note: typeof revision?.note === "string" ? revision.note : "",
+      totalAmount: typeof revision?.totalAmount === "string" ? revision.totalAmount : "",
+      items: Array.isArray(revision?.items)
+        ? revision.items.map((item) => ({
+          id: typeof item?.id === "string" && item.id ? item.id : crypto.randomUUID(),
+          sourceItemId: typeof item?.sourceItemId === "string" ? item.sourceItemId : "",
+          code: typeof item?.code === "string" ? item.code : "",
+          title: typeof item?.title === "string" ? item.title : "",
+          description: typeof item?.description === "string" ? item.description : "",
+          quantity: typeof item?.quantity === "string" ? item.quantity : "1",
+          unit: typeof item?.unit === "string" ? item.unit : "item",
+          unitPrice: typeof item?.unitPrice === "string" ? item.unitPrice : "0.00"
+        }))
+        : [createEmptyQuoteItem()]
+    }))
+    : [];
 }
 
 function parseFinalMeasure(value: string | null | undefined) {
@@ -1805,8 +1835,8 @@ export function JobRecordPage({
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
   const [quotationRevisions, setQuotationRevisions] = useState<QuotationRevision[]>([]);
-  const [revisionLabel, setRevisionLabel] = useState("");
   const [quoteStage, setQuoteStage] = useState<"initial" | "revision" | "final">("initial");
+  const [selectedRevisionId, setSelectedRevisionId] = useState("");
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
   const [selectedQuoteItemId, setSelectedQuoteItemId] = useState("");
   const [form, setForm] = useState<{
@@ -1856,7 +1886,9 @@ export function JobRecordPage({
       setDocuments(nextDocuments);
       setAssets(nextAssets);
       setQuotation(parseQuotation(nextJob.quotationJson));
-      setQuotationRevisions(parseQuotationRevisions(nextJob.quotationRevisionsJson));
+      const nextRevisions = parseQuotationRevisions(nextJob.quotationRevisionsJson);
+      setQuotationRevisions(nextRevisions);
+      setSelectedRevisionId(nextRevisions.length > 0 ? nextRevisions[nextRevisions.length - 1].id : "");
       setFinalMeasure(parseFinalMeasure(nextJob.finalMeasureJson));
       const scheduledDays = (nextJob.scheduledDays ?? []).length > 0
         ? [...nextJob.scheduledDays].sort()
@@ -2182,19 +2214,114 @@ export function JobRecordPage({
     });
   }
 
-  function saveQuotationRevision() {
-    const label = revisionLabel.trim() || `Revision ${quotationRevisions.length + 1}`;
+  function getNextRevisionLabel() {
+    return `Revision ${String.fromCharCode(65 + quotationRevisions.length)}`;
+  }
+
+  function createRevisionFromBase() {
+    const source = quotationRevisions.find((revision) => revision.id === selectedRevisionId);
+    const base = source
+      ? {
+        contractId: source.contractId,
+        reference: source.reference,
+        scope: source.scope,
+        exclusions: source.exclusions,
+        assumptions: source.assumptions,
+        revisionNotes: source.note,
+        totalAmount: source.totalAmount,
+        items: source.items.map((item) => ({ ...item, id: crypto.randomUUID() }))
+      }
+      : {
+        ...quotation,
+        items: quotation.items.map((item) => ({ ...item, id: crypto.randomUUID() }))
+      };
     const snapshot: QuotationRevision = {
       id: crypto.randomUUID(),
-      label,
+      label: getNextRevisionLabel(),
       createdAt: new Date().toISOString(),
-      note: quotation.revisionNotes,
-      totalAmount: quotation.totalAmount,
-      items: quotation.items
+      contractId: base.contractId,
+      reference: base.reference,
+      scope: base.scope,
+      exclusions: base.exclusions,
+      assumptions: base.assumptions,
+      note: base.revisionNotes,
+      totalAmount: base.totalAmount,
+      items: base.items
     };
-    setQuotationRevisions((current) => [snapshot, ...current]);
-    setRevisionLabel("");
-    setSuccess(`Saved ${label}. Remember to save the job to keep it.`);
+    setQuotationRevisions((current) => [...current, snapshot]);
+    setSelectedRevisionId(snapshot.id);
+    setSuccess(`Created ${snapshot.label}. Remember to save the job to keep it.`);
+  }
+
+  function updateRevisionField(revisionId: string, updater: (revision: QuotationRevision) => QuotationRevision) {
+    setQuotationRevisions((current) => current.map((revision) => revision.id === revisionId ? updater(revision) : revision));
+  }
+
+  function updateRevisionItem(revisionId: string, itemId: string, key: keyof QuoteLineItem, value: string) {
+    updateRevisionField(revisionId, (revision) => {
+      const nextItems = revision.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item);
+      return {
+        ...revision,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+  }
+
+  function addRevisionItem(revisionId: string) {
+    updateRevisionField(revisionId, (revision) => {
+      const nextItems = [...revision.items, createEmptyQuoteItem()];
+      return {
+        ...revision,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+  }
+
+  function removeRevisionItem(revisionId: string, itemId: string) {
+    updateRevisionField(revisionId, (revision) => {
+      const nextItems = revision.items.length === 1 ? revision.items : revision.items.filter((item) => item.id !== itemId);
+      return {
+        ...revision,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+  }
+
+  function addQuoteItemToRevisionFromLibrary(revisionId: string) {
+    if (!selectedQuoteItemId) {
+      return;
+    }
+
+    const matchedItem = quoteItems.find((item) => item.id === selectedQuoteItemId);
+    if (!matchedItem) {
+      return;
+    }
+
+    updateRevisionField(revisionId, (revision) => {
+      const nextItems = [
+        ...revision.items,
+        {
+          id: crypto.randomUUID(),
+          sourceItemId: matchedItem.id,
+          code: matchedItem.code,
+          title: matchedItem.name,
+          description: matchedItem.description,
+          quantity: "1",
+          unit: matchedItem.unit,
+          unitPrice: getCatalogRate(matchedItem, revision.contractId)
+        }
+      ];
+
+      return {
+        ...revision,
+        items: nextItems,
+        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+      };
+    });
+    setSelectedQuoteItemId("");
   }
 
   function addQuoteItemFromLibrary() {
@@ -2230,6 +2357,9 @@ export function JobRecordPage({
     });
     setSelectedQuoteItemId("");
   }
+
+  const activeRevision = quotationRevisions.find((revision) => revision.id === selectedRevisionId) ?? null;
+  const latestRevision = quotationRevisions.length > 0 ? quotationRevisions[quotationRevisions.length - 1] : null;
 
   return (
     <ProtectedWorkspace allow="tenant" description="Review a single job record and manage its scheduling." title={job ? job.title : "Job Record"}>
@@ -2326,7 +2456,12 @@ export function JobRecordPage({
                           <button
                             key={stage.key}
                             className={quoteStage === stage.key ? "button" : "button button-subtle"}
-                            onClick={() => setQuoteStage(stage.key)}
+                            onClick={() => {
+                              setQuoteStage(stage.key);
+                              if (stage.key === "revision" && quotationRevisions.length > 0 && !selectedRevisionId) {
+                                setSelectedRevisionId(quotationRevisions[quotationRevisions.length - 1].id);
+                              }
+                            }}
                             type="button"
                           >
                             {stage.label}
@@ -2339,7 +2474,60 @@ export function JobRecordPage({
                       <>
                         <div className="panel" style={{ padding: 20 }}>
                           <div style={{ fontWeight: 800, marginBottom: 16 }}>{quoteStage === "initial" ? "Initial quote" : "Revision quote"}</div>
-                          {canManage ? (
+                          {quoteStage === "revision" ? (
+                            activeRevision ? (
+                              <div className="stack">
+                                <label className="field">
+                                  <span>Revision dropdown</span>
+                                  <select className="input" onChange={(event) => setSelectedRevisionId(event.target.value)} value={selectedRevisionId}>
+                                    {quotationRevisions.map((revision) => (
+                                      <option key={revision.id} value={revision.id}>{revision.label}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                                {canManage ? (
+                                  <>
+                                    <TextField label="Reference" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, reference: value }))} value={activeRevision.reference} />
+                                    <TextAreaField label="Scope of works" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, scope: value }))} value={activeRevision.scope} />
+                                    <TextAreaField label="Assumptions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, assumptions: value }))} value={activeRevision.assumptions} />
+                                    <TextAreaField label="Exclusions" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, exclusions: value }))} value={activeRevision.exclusions} />
+                                    <TextAreaField label="Revision notes" onChange={(value) => updateRevisionField(activeRevision.id, (revision) => ({ ...revision, note: value }))} value={activeRevision.note} />
+                                    <div className="field">
+                                      <span>Add quoteable item</span>
+                                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                                        <label className="field" style={{ flex: "1 1 280px" }}>
+                                          <span>Rate item</span>
+                                          <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
+                                            <option value="">Choose an item</option>
+                                            {quoteItems.map((item) => (
+                                              <option key={item.id} value={item.id}>
+                                                {item.code} - {item.name} ({getCatalogRate(item, activeRevision.contractId || contracts[0]?.id || "")})
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <button className="button button-subtle" onClick={() => addQuoteItemToRevisionFromLibrary(activeRevision.id)} type="button">Add item</button>
+                                        <button className="button button-subtle" onClick={() => addRevisionItem(activeRevision.id)} type="button">Add custom item</button>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="stack">
+                                    <div className="panel" style={{ padding: 16 }}><div className="muted">Revision</div><div style={{ fontWeight: 700 }}>{activeRevision.label}</div></div>
+                                    <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{activeRevision.reference || "Not set"}</div></div>
+                                    <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{activeRevision.scope || "Not set"}</div></div>
+                                    <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Revision notes</div><div style={{ fontWeight: 700 }}>{activeRevision.note || "Not set"}</div></div>
+                                    <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{activeRevision.totalAmount || "Not set"}</div></div>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="stack">
+                                <div className="muted">No revisions yet.</div>
+                                {canManage ? <button className="button button-subtle" onClick={createRevisionFromBase} type="button">Create {getNextRevisionLabel()}</button> : null}
+                              </div>
+                            )
+                          ) : canManage ? (
                             <div className="stack">
                               <label className="field">
                                 <span>Rate list dropdown</span>
@@ -2374,9 +2562,6 @@ export function JobRecordPage({
                               <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
                               <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
                               <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
-                              {quoteStage === "revision" ? (
-                                <TextAreaField label="Revision notes" onChange={(value) => setQuotation((current) => ({ ...current, revisionNotes: value }))} value={quotation.revisionNotes} />
-                              ) : null}
                               <div className="field">
                                 <span>Add quoteable item</span>
                                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
@@ -2402,7 +2587,6 @@ export function JobRecordPage({
                               <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{quotation.reference || "Not set"}</div></div>
                               <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{quotation.scope || "Not set"}</div></div>
                               <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div></div>
-                              {quoteStage === "revision" ? <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Revision notes</div><div style={{ fontWeight: 700 }}>{quotation.revisionNotes || "Not set"}</div></div> : null}
                             </div>
                           )}
                         </div>
@@ -2410,12 +2594,12 @@ export function JobRecordPage({
                         <div className="panel" style={{ padding: 20 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
                             <div style={{ fontWeight: 800 }}>{quoteStage === "initial" ? "Initial quote items" : "Revision items"}</div>
-                            {canManage ? <button className="button button-subtle" onClick={addQuotationItem} type="button">Add line item</button> : null}
+                            {canManage && quoteStage === "initial" ? <button className="button button-subtle" onClick={addQuotationItem} type="button">Add line item</button> : null}
                           </div>
                           <div className="stack">
-                            {quotation.items.map((item) => (
+                            {(quoteStage === "revision" && activeRevision ? activeRevision.items : quotation.items).map((item) => (
                               <div key={item.id} className="panel" style={{ padding: 16 }}>
-                                {canManage ? (
+                                {canManage && quoteStage === "initial" ? (
                                   <div className="stack">
                                     <TextField label="Title" onChange={(value) => updateQuotationItem(item.id, "title", value)} value={item.title} />
                                     <TextAreaField label="Description" onChange={(value) => updateQuotationItem(item.id, "description", value)} value={item.description} />
@@ -2427,6 +2611,20 @@ export function JobRecordPage({
                                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                                       <div className="muted">{item.code || "Custom item"}</div>
                                       <button className="button button-subtle" onClick={() => removeQuotationItem(item.id)} type="button">Remove line item</button>
+                                    </div>
+                                  </div>
+                                ) : canManage && quoteStage === "revision" && activeRevision ? (
+                                  <div className="stack">
+                                    <TextField label="Title" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "title", value)} value={item.title} />
+                                    <TextAreaField label="Description" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "description", value)} value={item.description} />
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                                      <TextField label="Quantity" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "quantity", value)} value={item.quantity} />
+                                      <TextField label="Unit" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "unit", value)} value={item.unit} />
+                                      <TextField label="Unit price" onChange={(value) => updateRevisionItem(activeRevision.id, item.id, "unitPrice", value)} value={item.unitPrice} />
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                      <div className="muted">{item.code || "Custom item"}</div>
+                                      <button className="button button-subtle" onClick={() => removeRevisionItem(activeRevision.id, item.id)} type="button">Remove line item</button>
                                     </div>
                                   </div>
                                 ) : (
@@ -2443,8 +2641,8 @@ export function JobRecordPage({
 
                         {canManage ? (
                           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                            {quoteStage === "revision" ? <button className="button button-subtle" onClick={saveQuotationRevision} type="button">Capture Revision</button> : null}
-                            <button className="button" onClick={handleSave} type="button">Save Quotation</button>
+                            {quoteStage === "initial" ? <button className="button button-subtle" onClick={createRevisionFromBase} type="button">Create {getNextRevisionLabel()}</button> : null}
+                            <button className="button" onClick={handleSave} type="button">{quoteStage === "initial" ? "Save Initial Quote" : "Save Revision"}</button>
                           </div>
                         ) : null}
                       </>
@@ -2454,6 +2652,18 @@ export function JobRecordPage({
                       <>
                         <div className="panel" style={{ padding: 20 }}>
                           <div style={{ fontWeight: 800, marginBottom: 16 }}>Final measure</div>
+                          {latestRevision ? (
+                            <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+                              <div className="muted">Based on latest revision</div>
+                              <div style={{ fontWeight: 700 }}>{latestRevision.label}</div>
+                              <div className="muted" style={{ marginTop: 8 }}>Reference: {latestRevision.reference || "Not set"}</div>
+                              <div className="muted">Revision value: {latestRevision.totalAmount || "Not set"}</div>
+                            </div>
+                          ) : (
+                            <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+                              <div className="muted">No revisions available yet. Final measure will use the initial quote until a revision exists.</div>
+                            </div>
+                          )}
                           {canManage ? (
                             <div className="stack">
                               <TextField label="Measured by" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredBy: value }))} value={finalMeasure.measuredBy} />
@@ -2481,35 +2691,12 @@ export function JobRecordPage({
                   </div>
 
                   <div className="stack">
-                    <div className="panel" style={{ padding: 20 }}>
-                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Commercial summary</div>
-                      <div className="stack" style={{ gap: 12 }}>
-                        <div>
-                          <div className="muted">Quote status</div>
-                          <div style={{ fontWeight: 700 }}>{job?.quoteStatus?.replaceAll("_", " ") || (quotation.totalAmount ? "DRAFT" : "NOT STARTED")}</div>
-                        </div>
-                        <div>
-                          <div className="muted">Current quote value</div>
-                          <div style={{ fontWeight: 700 }}>{quotation.totalAmount || calculateQuoteTotal(quotation.items).toFixed(2)}</div>
-                        </div>
-                        <div>
-                          <div className="muted">Final measured value</div>
-                          <div style={{ fontWeight: 700 }}>{finalMeasure.totalMeasuredValue || "Not set"}</div>
-                        </div>
-                        <div>
-                          <div className="muted">Revisions saved</div>
-                          <div style={{ fontWeight: 700 }}>{quotationRevisions.length}</div>
-                        </div>
-                      </div>
-                    </div>
-
                     {quoteStage === "revision" ? (
                       <div className="panel" style={{ padding: 20 }}>
                         <div style={{ fontWeight: 800, marginBottom: 12 }}>Revision register</div>
                         {canManage ? (
                           <div className="stack" style={{ marginBottom: 16 }}>
-                            <TextField label="Revision label" onChange={setRevisionLabel} value={revisionLabel} />
-                            <button className="button button-subtle" onClick={saveQuotationRevision} type="button">Capture Current Revision</button>
+                            <button className="button button-subtle" onClick={createRevisionFromBase} type="button">Create {getNextRevisionLabel()}</button>
                           </div>
                         ) : null}
                         <div className="stack" style={{ gap: 12 }}>
@@ -2524,15 +2711,6 @@ export function JobRecordPage({
                           ))}
                         </div>
                       </div>
-                    ) : null}
-
-                    {canManage && quoteStage !== "final" ? (
-                      <QuotationLibraryPanel
-                        contracts={contracts}
-                        quoteItems={quoteItems}
-                        setContracts={setContracts}
-                        setQuoteItems={setQuoteItems}
-                      />
                     ) : null}
                   </div>
                 </div>

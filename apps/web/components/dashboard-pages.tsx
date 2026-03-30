@@ -387,6 +387,10 @@ function getCatalogRate(item: QuoteCatalogItemRecord, contractId: string) {
   return item.contractRates[contractId] ?? item.defaultRate ?? "0.00";
 }
 
+function getRateListName(contracts: ContractRecord[], contractId: string) {
+  return contracts.find((contract) => contract.id === contractId)?.name || "Not set";
+}
+
 function calculateQuoteTotal(items: QuoteLineItem[]) {
   return items.reduce((total, item) => {
     const quantity = Number(item.quantity);
@@ -1473,7 +1477,7 @@ export function CreateJobPage() {
                     <div style={{ fontWeight: 800, marginBottom: 16 }}>Quotation</div>
                     <div className="stack">
                       <label className="field">
-                        <span>Contract</span>
+                        <span>Rate list</span>
                         <select
                           className="input"
                           onChange={(event) => {
@@ -1494,7 +1498,7 @@ export function CreateJobPage() {
                           }}
                           value={quotation.contractId}
                         >
-                          <option value="">Choose a contract</option>
+                          <option value="">Choose a rate list</option>
                           {contracts.map((contract) => (
                             <option key={contract.id} value={contract.id}>{contract.name}</option>
                           ))}
@@ -1508,7 +1512,7 @@ export function CreateJobPage() {
                         <span>Add quoteable item</span>
                         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                           <label className="field" style={{ flex: "1 1 280px" }}>
-                            <span>Catalogue item</span>
+                            <span>Rate item</span>
                             <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
                               <option value="">Choose an item</option>
                               {quoteItems.map((item) => (
@@ -2251,7 +2255,7 @@ export function JobRecordPage({
                       {canManage ? (
                         <div className="stack">
                           <label className="field">
-                            <span>Contract</span>
+                            <span>Rate list</span>
                             <select
                               className="input"
                               onChange={(event) => {
@@ -2272,7 +2276,7 @@ export function JobRecordPage({
                               }}
                               value={quotation.contractId}
                             >
-                              <option value="">Choose a contract</option>
+                              <option value="">Choose a rate list</option>
                               {contracts.map((contract) => (
                                 <option key={contract.id} value={contract.id}>{contract.name}</option>
                               ))}
@@ -2287,7 +2291,7 @@ export function JobRecordPage({
                             <span>Add quoteable item</span>
                             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                               <label className="field" style={{ flex: "1 1 280px" }}>
-                                <span>Catalogue item</span>
+                                <span>Rate item</span>
                                 <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
                                   <option value="">Choose an item</option>
                                   {quoteItems.map((item) => (
@@ -2304,7 +2308,7 @@ export function JobRecordPage({
                         </div>
                       ) : (
                         <div className="stack">
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Contract</div><div style={{ fontWeight: 700 }}>{contracts.find((contract) => contract.id === quotation.contractId)?.name || "Not set"}</div></div>
+                          <div className="panel" style={{ padding: 16 }}><div className="muted">Rate list</div><div style={{ fontWeight: 700 }}>{getRateListName(contracts, quotation.contractId)}</div></div>
                           <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{quotation.reference || "Not set"}</div></div>
                           <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{quotation.scope || "Not set"}</div></div>
                           <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div></div>
@@ -4029,9 +4033,21 @@ function QuotationLibraryPanel({
 }>) {
   const [contractForm, setContractForm] = useState({ name: "", code: "", description: "" });
   const [itemForm, setItemForm] = useState({ name: "", code: "", description: "", unit: "item", defaultRate: "0.00" });
+  const [contractDrafts, setContractDrafts] = useState<Record<string, { name: string; code: string; description: string }>>({});
   const [rateDrafts, setRateDrafts] = useState<Record<string, Record<string, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setContractDrafts(
+      Object.fromEntries(
+        contracts.map((contract) => [
+          contract.id,
+          { name: contract.name, code: contract.code, description: contract.description ?? "" }
+        ])
+      )
+    );
+  }, [contracts]);
 
   useEffect(() => {
     setRateDrafts(
@@ -4073,6 +4089,24 @@ function QuotationLibraryPanel({
     }
   }
 
+  async function saveContract(contract: ContractRecord) {
+    try {
+      const updated = await apiRequest<ContractRecord>(`jobs/quotation/contracts/${contract.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(contractDrafts[contract.id] ?? {
+          name: contract.name,
+          code: contract.code,
+          description: contract.description
+        })
+      });
+      setContracts((current) => current.map((entry) => entry.id === contract.id ? updated : entry).sort((a, b) => a.name.localeCompare(b.name)));
+      setSuccess(`Saved rate list ${updated.name}.`);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to save rate list.");
+    }
+  }
+
   async function saveQuoteItemRates(item: QuoteCatalogItemRecord) {
     try {
       const updated = await apiRequest<QuoteCatalogItemRecord>(`jobs/quotation/items/${item.id}`, {
@@ -4096,27 +4130,63 @@ function QuotationLibraryPanel({
 
   return (
     <div className="panel" style={{ padding: 20 }}>
-      <div style={{ fontWeight: 800, marginBottom: 12 }}>Quotation library</div>
+      <div style={{ fontWeight: 800, marginBottom: 12 }}>Rates</div>
       <ErrorText error={error} />
       {success ? <div className="callout" style={{ marginBottom: 12 }}>{success}</div> : null}
       <div className="stack">
         <form className="stack" onSubmit={createContract}>
-          <div style={{ fontWeight: 700 }}>Contracts</div>
-          <TextField label="Contract name" onChange={(value) => setContractForm((current) => ({ ...current, name: value }))} value={contractForm.name} />
-          <TextField label="Contract code" onChange={(value) => setContractForm((current) => ({ ...current, code: value }))} value={contractForm.code} />
+          <div style={{ fontWeight: 700 }}>Rate lists</div>
+          <TextField label="Customer or rate list name" onChange={(value) => setContractForm((current) => ({ ...current, name: value }))} value={contractForm.name} />
+          <TextField label="Rate list code" onChange={(value) => setContractForm((current) => ({ ...current, code: value }))} value={contractForm.code} />
           <TextAreaField label="Description" onChange={(value) => setContractForm((current) => ({ ...current, description: value }))} value={contractForm.description} />
-          <button className="button button-subtle" type="submit">Add Contract</button>
+          <button className="button button-subtle" type="submit">Add Rate List</button>
         </form>
         <div className="stack" style={{ gap: 10 }}>
           {contracts.map((contract) => (
             <div key={contract.id} className="panel" style={{ padding: 12 }}>
-              <div style={{ fontWeight: 700 }}>{contract.name}</div>
-              <div className="muted">{contract.code}</div>
+              <div className="stack" style={{ gap: 10 }}>
+                <TextField
+                  label="Name"
+                  onChange={(value) => setContractDrafts((current) => ({
+                    ...current,
+                    [contract.id]: {
+                      ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
+                      name: value
+                    }
+                  }))}
+                  value={contractDrafts[contract.id]?.name ?? contract.name}
+                />
+                <TextField
+                  label="Code"
+                  onChange={(value) => setContractDrafts((current) => ({
+                    ...current,
+                    [contract.id]: {
+                      ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
+                      code: value
+                    }
+                  }))}
+                  value={contractDrafts[contract.id]?.code ?? contract.code}
+                />
+                <TextAreaField
+                  label="Description"
+                  onChange={(value) => setContractDrafts((current) => ({
+                    ...current,
+                    [contract.id]: {
+                      ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
+                      description: value
+                    }
+                  }))}
+                  value={contractDrafts[contract.id]?.description ?? contract.description ?? ""}
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                <button className="button button-subtle" onClick={() => void saveContract(contract)} type="button">Save Rate List</button>
+              </div>
             </div>
           ))}
         </div>
         <form className="stack" onSubmit={createQuoteItem}>
-          <div style={{ fontWeight: 700 }}>Quoteable items</div>
+          <div style={{ fontWeight: 700 }}>Rate items</div>
           <TextField label="Item name" onChange={(value) => setItemForm((current) => ({ ...current, name: value }))} value={itemForm.name} />
           <TextField label="Item code" onChange={(value) => setItemForm((current) => ({ ...current, code: value }))} value={itemForm.code} />
           <TextAreaField label="Description" onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} value={itemForm.description} />
@@ -4124,7 +4194,7 @@ function QuotationLibraryPanel({
             <TextField label="Unit" onChange={(value) => setItemForm((current) => ({ ...current, unit: value }))} value={itemForm.unit} />
             <TextField label="Default rate" onChange={(value) => setItemForm((current) => ({ ...current, defaultRate: value }))} value={itemForm.defaultRate} />
           </div>
-          <button className="button button-subtle" type="submit">Add Quote Item</button>
+          <button className="button button-subtle" type="submit">Add Rate Item</button>
         </form>
         <div className="stack" style={{ gap: 12 }}>
           {quoteItems.map((item) => (
@@ -4156,6 +4226,51 @@ function QuotationLibraryPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+export function RatesPage() {
+  const [contracts, setContracts] = useState<ContractRecord[]>([]);
+  const [quoteItems, setQuoteItems] = useState<QuoteCatalogItemRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiRequest<{ contracts: ContractRecord[]; items: QuoteCatalogItemRecord[] }>("jobs/quotation/options")
+      .then((result) => {
+        setContracts(result.contracts);
+        setQuoteItems(result.items);
+        setError(null);
+      })
+      .catch((caughtError) => {
+        setError(caughtError instanceof Error ? caughtError.message : "Failed to load rates.");
+      });
+  }, []);
+
+  return (
+    <ProtectedWorkspace
+      allow="tenant"
+      description="Manage editable customer rate lists and the items your team can pull straight into job quotations."
+      title="Rates"
+    >
+      {(session) => canManageWorkspace(session.user.role) ? (
+        <div className="stack">
+          <ErrorText error={error} />
+          <QuotationLibraryPanel
+            contracts={contracts}
+            quoteItems={quoteItems}
+            setContracts={setContracts}
+            setQuoteItems={setQuoteItems}
+          />
+        </div>
+      ) : (
+        <div className="panel" style={{ padding: 24 }}>
+          <div style={{ fontWeight: 700 }}>Rates are manager-only.</div>
+          <div className="muted" style={{ marginTop: 8 }}>
+            Managers can maintain customer rate lists here and then select them in each job quotation.
+          </div>
+        </div>
+      )}
+    </ProtectedWorkspace>
   );
 }
 

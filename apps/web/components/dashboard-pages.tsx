@@ -1806,6 +1806,7 @@ export function JobRecordPage({
   const [quotation, setQuotation] = useState<QuotationRecord>(() => createEmptyQuotation());
   const [quotationRevisions, setQuotationRevisions] = useState<QuotationRevision[]>([]);
   const [revisionLabel, setRevisionLabel] = useState("");
+  const [quoteStage, setQuoteStage] = useState<"initial" | "revision" | "final">("initial");
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
   const [selectedQuoteItemId, setSelectedQuoteItemId] = useState("");
   const [form, setForm] = useState<{
@@ -2315,130 +2316,167 @@ export function JobRecordPage({
               {visibleActiveTab === "quotation" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 24 }}>
                   <div className="stack">
-                    <div className="panel" style={{ padding: 20 }}>
-                      <div style={{ fontWeight: 800, marginBottom: 16 }}>Current quotation</div>
-                      {canManage ? (
-                        <div className="stack">
-                          <label className="field">
-                            <span>Rate list dropdown</span>
-                            <select
-                              className="input"
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setQuotation((current) => {
-                                  const nextItems = current.items.map((item) => {
-                                    const matchedItem = item.sourceItemId ? quoteItems.find((entry) => entry.id === item.sourceItemId) : undefined;
-                                    return matchedItem ? { ...item, unitPrice: getCatalogRate(matchedItem, value) } : item;
-                                  });
-
-                                  return {
-                                    ...current,
-                                    contractId: value,
-                                    items: nextItems,
-                                    totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
-                                  };
-                                });
-                              }}
-                              value={quotation.contractId}
-                            >
-                              <option value="">Choose a rate list</option>
-                              {contracts.map((contract) => (
-                                <option key={contract.id} value={contract.id}>{contract.name}</option>
-                              ))}
-                            </select>
-                            <span className="muted" style={{ fontSize: 12 }}>Select the customer rate list from the dropdown.</span>
-                          </label>
-                          <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
-                          <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
-                          <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
-                          <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
-                          <TextAreaField label="Revision notes" onChange={(value) => setQuotation((current) => ({ ...current, revisionNotes: value }))} value={quotation.revisionNotes} />
-                          <div className="field">
-                            <span>Add quoteable item</span>
-                            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-                              <label className="field" style={{ flex: "1 1 280px" }}>
-                                <span>Rate item</span>
-                                <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
-                                  <option value="">Choose an item</option>
-                                  {quoteItems.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.code} - {item.name} ({getCatalogRate(item, quotation.contractId || contracts[0]?.id || "")})
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <button className="button button-subtle" onClick={addQuoteItemFromLibrary} type="button">Add item</button>
-                              <button className="button button-subtle" onClick={addQuotationItem} type="button">Add custom item</button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="stack">
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Rate list</div><div style={{ fontWeight: 700 }}>{getRateListName(contracts, quotation.contractId)}</div></div>
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{quotation.reference || "Not set"}</div></div>
-                          <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{quotation.scope || "Not set"}</div></div>
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div></div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="panel" style={{ padding: 20 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                        <div style={{ fontWeight: 800 }}>Quote line items</div>
-                        {canManage ? <button className="button button-subtle" onClick={addQuotationItem} type="button">Add line item</button> : null}
-                      </div>
-                      <div className="stack">
-                        {quotation.items.map((item) => (
-                          <div key={item.id} className="panel" style={{ padding: 16 }}>
-                            {canManage ? (
-                              <div className="stack">
-                                <TextField label="Title" onChange={(value) => updateQuotationItem(item.id, "title", value)} value={item.title} />
-                                <TextAreaField label="Description" onChange={(value) => updateQuotationItem(item.id, "description", value)} value={item.description} />
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                                  <TextField label="Quantity" onChange={(value) => updateQuotationItem(item.id, "quantity", value)} value={item.quantity} />
-                                  <TextField label="Unit" onChange={(value) => updateQuotationItem(item.id, "unit", value)} value={item.unit} />
-                                  <TextField label="Unit price" onChange={(value) => updateQuotationItem(item.id, "unitPrice", value)} value={item.unitPrice} />
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                                  <div className="muted">{item.code || "Custom item"}</div>
-                                  <button className="button button-subtle" onClick={() => removeQuotationItem(item.id)} type="button">Remove line item</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="stack" style={{ gap: 8 }}>
-                                <div style={{ fontWeight: 700 }}>{item.title || "Untitled item"}</div>
-                                <div className="muted" style={{ whiteSpace: "pre-wrap" }}>{item.description || "No description."}</div>
-                                <div>{item.quantity} {item.unit} at {item.unitPrice}</div>
-                              </div>
-                            )}
-                          </div>
+                    <div className="panel" style={{ padding: 16 }}>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {[
+                          { key: "initial" as const, label: "Initial Quote" },
+                          { key: "revision" as const, label: "Revision" },
+                          { key: "final" as const, label: "Final Measure" }
+                        ].map((stage) => (
+                          <button
+                            key={stage.key}
+                            className={quoteStage === stage.key ? "button" : "button button-subtle"}
+                            onClick={() => setQuoteStage(stage.key)}
+                            type="button"
+                          >
+                            {stage.label}
+                          </button>
                         ))}
                       </div>
                     </div>
 
-                    <div className="panel" style={{ padding: 20 }}>
-                      <div style={{ fontWeight: 800, marginBottom: 16 }}>Final measure</div>
-                      {canManage ? (
-                        <div className="stack">
-                          <TextField label="Measured by" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredBy: value }))} value={finalMeasure.measuredBy} />
-                          <TextField label="Measured on" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredOn: value }))} type="date" value={finalMeasure.measuredOn} />
-                          <TextAreaField label="Measure summary" onChange={(value) => setFinalMeasure((current) => ({ ...current, summary: value }))} value={finalMeasure.summary} />
-                          <TextField label="Measured total value" onChange={(value) => setFinalMeasure((current) => ({ ...current, totalMeasuredValue: value }))} value={finalMeasure.totalMeasuredValue} />
-                        </div>
-                      ) : (
-                        <div className="stack">
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Measured by</div><div style={{ fontWeight: 700 }}>{finalMeasure.measuredBy || "Not set"}</div></div>
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Measured on</div><div style={{ fontWeight: 700 }}>{finalMeasure.measuredOn || "Not set"}</div></div>
-                          <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Summary</div><div style={{ fontWeight: 700 }}>{finalMeasure.summary || "Not set"}</div></div>
-                          <div className="panel" style={{ padding: 16 }}><div className="muted">Final value</div><div style={{ fontWeight: 700 }}>{finalMeasure.totalMeasuredValue || "Not set"}</div></div>
-                        </div>
-                      )}
-                    </div>
+                    {quoteStage === "initial" || quoteStage === "revision" ? (
+                      <>
+                        <div className="panel" style={{ padding: 20 }}>
+                          <div style={{ fontWeight: 800, marginBottom: 16 }}>{quoteStage === "initial" ? "Initial quote" : "Revision quote"}</div>
+                          {canManage ? (
+                            <div className="stack">
+                              <label className="field">
+                                <span>Rate list dropdown</span>
+                                <select
+                                  className="input"
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setQuotation((current) => {
+                                      const nextItems = current.items.map((item) => {
+                                        const matchedItem = item.sourceItemId ? quoteItems.find((entry) => entry.id === item.sourceItemId) : undefined;
+                                        return matchedItem ? { ...item, unitPrice: getCatalogRate(matchedItem, value) } : item;
+                                      });
 
-                    {canManage ? (
-                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                        <button className="button" onClick={handleSave} type="button">Save Quotation</button>
-                      </div>
+                                      return {
+                                        ...current,
+                                        contractId: value,
+                                        items: nextItems,
+                                        totalAmount: calculateQuoteTotal(nextItems).toFixed(2)
+                                      };
+                                    });
+                                  }}
+                                  value={quotation.contractId}
+                                >
+                                  <option value="">Choose a rate list</option>
+                                  {contracts.map((contract) => (
+                                    <option key={contract.id} value={contract.id}>{contract.name}</option>
+                                  ))}
+                                </select>
+                                <span className="muted" style={{ fontSize: 12 }}>Select the customer rate list from the dropdown.</span>
+                              </label>
+                              <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
+                              <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
+                              <TextAreaField label="Assumptions" onChange={(value) => setQuotation((current) => ({ ...current, assumptions: value }))} value={quotation.assumptions} />
+                              <TextAreaField label="Exclusions" onChange={(value) => setQuotation((current) => ({ ...current, exclusions: value }))} value={quotation.exclusions} />
+                              {quoteStage === "revision" ? (
+                                <TextAreaField label="Revision notes" onChange={(value) => setQuotation((current) => ({ ...current, revisionNotes: value }))} value={quotation.revisionNotes} />
+                              ) : null}
+                              <div className="field">
+                                <span>Add quoteable item</span>
+                                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                                  <label className="field" style={{ flex: "1 1 280px" }}>
+                                    <span>Rate item</span>
+                                    <select className="input" onChange={(event) => setSelectedQuoteItemId(event.target.value)} value={selectedQuoteItemId}>
+                                      <option value="">Choose an item</option>
+                                      {quoteItems.map((item) => (
+                                        <option key={item.id} value={item.id}>
+                                          {item.code} - {item.name} ({getCatalogRate(item, quotation.contractId || contracts[0]?.id || "")})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <button className="button button-subtle" onClick={addQuoteItemFromLibrary} type="button">Add item</button>
+                                  <button className="button button-subtle" onClick={addQuotationItem} type="button">Add custom item</button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="stack">
+                              <div className="panel" style={{ padding: 16 }}><div className="muted">Rate list</div><div style={{ fontWeight: 700 }}>{getRateListName(contracts, quotation.contractId)}</div></div>
+                              <div className="panel" style={{ padding: 16 }}><div className="muted">Reference</div><div style={{ fontWeight: 700 }}>{quotation.reference || "Not set"}</div></div>
+                              <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Scope</div><div style={{ fontWeight: 700 }}>{quotation.scope || "Not set"}</div></div>
+                              <div className="panel" style={{ padding: 16 }}><div className="muted">Quoted total</div><div style={{ fontWeight: 700 }}>{quotation.totalAmount || "Not set"}</div></div>
+                              {quoteStage === "revision" ? <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Revision notes</div><div style={{ fontWeight: 700 }}>{quotation.revisionNotes || "Not set"}</div></div> : null}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="panel" style={{ padding: 20 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+                            <div style={{ fontWeight: 800 }}>{quoteStage === "initial" ? "Initial quote items" : "Revision items"}</div>
+                            {canManage ? <button className="button button-subtle" onClick={addQuotationItem} type="button">Add line item</button> : null}
+                          </div>
+                          <div className="stack">
+                            {quotation.items.map((item) => (
+                              <div key={item.id} className="panel" style={{ padding: 16 }}>
+                                {canManage ? (
+                                  <div className="stack">
+                                    <TextField label="Title" onChange={(value) => updateQuotationItem(item.id, "title", value)} value={item.title} />
+                                    <TextAreaField label="Description" onChange={(value) => updateQuotationItem(item.id, "description", value)} value={item.description} />
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                                      <TextField label="Quantity" onChange={(value) => updateQuotationItem(item.id, "quantity", value)} value={item.quantity} />
+                                      <TextField label="Unit" onChange={(value) => updateQuotationItem(item.id, "unit", value)} value={item.unit} />
+                                      <TextField label="Unit price" onChange={(value) => updateQuotationItem(item.id, "unitPrice", value)} value={item.unitPrice} />
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                      <div className="muted">{item.code || "Custom item"}</div>
+                                      <button className="button button-subtle" onClick={() => removeQuotationItem(item.id)} type="button">Remove line item</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="stack" style={{ gap: 8 }}>
+                                    <div style={{ fontWeight: 700 }}>{item.title || "Untitled item"}</div>
+                                    <div className="muted" style={{ whiteSpace: "pre-wrap" }}>{item.description || "No description."}</div>
+                                    <div>{item.quantity} {item.unit} at {item.unitPrice}</div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {canManage ? (
+                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                            {quoteStage === "revision" ? <button className="button button-subtle" onClick={saveQuotationRevision} type="button">Capture Revision</button> : null}
+                            <button className="button" onClick={handleSave} type="button">Save Quotation</button>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {quoteStage === "final" ? (
+                      <>
+                        <div className="panel" style={{ padding: 20 }}>
+                          <div style={{ fontWeight: 800, marginBottom: 16 }}>Final measure</div>
+                          {canManage ? (
+                            <div className="stack">
+                              <TextField label="Measured by" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredBy: value }))} value={finalMeasure.measuredBy} />
+                              <TextField label="Measured on" onChange={(value) => setFinalMeasure((current) => ({ ...current, measuredOn: value }))} type="date" value={finalMeasure.measuredOn} />
+                              <TextAreaField label="Measure summary" onChange={(value) => setFinalMeasure((current) => ({ ...current, summary: value }))} value={finalMeasure.summary} />
+                              <TextField label="Measured total value" onChange={(value) => setFinalMeasure((current) => ({ ...current, totalMeasuredValue: value }))} value={finalMeasure.totalMeasuredValue} />
+                            </div>
+                          ) : (
+                            <div className="stack">
+                              <div className="panel" style={{ padding: 16 }}><div className="muted">Measured by</div><div style={{ fontWeight: 700 }}>{finalMeasure.measuredBy || "Not set"}</div></div>
+                              <div className="panel" style={{ padding: 16 }}><div className="muted">Measured on</div><div style={{ fontWeight: 700 }}>{finalMeasure.measuredOn || "Not set"}</div></div>
+                              <div className="panel" style={{ padding: 16, whiteSpace: "pre-wrap" }}><div className="muted">Summary</div><div style={{ fontWeight: 700 }}>{finalMeasure.summary || "Not set"}</div></div>
+                              <div className="panel" style={{ padding: 16 }}><div className="muted">Final value</div><div style={{ fontWeight: 700 }}>{finalMeasure.totalMeasuredValue || "Not set"}</div></div>
+                            </div>
+                          )}
+                        </div>
+
+                        {canManage ? (
+                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                            <button className="button" onClick={handleSave} type="button">Save Final Measure</button>
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
 
@@ -2465,28 +2503,30 @@ export function JobRecordPage({
                       </div>
                     </div>
 
-                    <div className="panel" style={{ padding: 20 }}>
-                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Revision register</div>
-                      {canManage ? (
-                        <div className="stack" style={{ marginBottom: 16 }}>
-                          <TextField label="Revision label" onChange={setRevisionLabel} value={revisionLabel} />
-                          <button className="button button-subtle" onClick={saveQuotationRevision} type="button">Capture Current Revision</button>
-                        </div>
-                      ) : null}
-                      <div className="stack" style={{ gap: 12 }}>
-                        {quotationRevisions.length === 0 ? <div className="muted">No quotation revisions saved yet.</div> : null}
-                        {quotationRevisions.map((revision) => (
-                          <div key={revision.id} className="panel" style={{ padding: 14 }}>
-                            <div style={{ fontWeight: 700 }}>{revision.label}</div>
-                            <div className="muted">{formatDateLabel(revision.createdAt)}</div>
-                            <div style={{ marginTop: 8 }}>Total: {revision.totalAmount || "Not set"}</div>
-                            <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{revision.note || "No revision note."}</div>
+                    {quoteStage === "revision" ? (
+                      <div className="panel" style={{ padding: 20 }}>
+                        <div style={{ fontWeight: 800, marginBottom: 12 }}>Revision register</div>
+                        {canManage ? (
+                          <div className="stack" style={{ marginBottom: 16 }}>
+                            <TextField label="Revision label" onChange={setRevisionLabel} value={revisionLabel} />
+                            <button className="button button-subtle" onClick={saveQuotationRevision} type="button">Capture Current Revision</button>
                           </div>
-                        ))}
+                        ) : null}
+                        <div className="stack" style={{ gap: 12 }}>
+                          {quotationRevisions.length === 0 ? <div className="muted">No quotation revisions saved yet.</div> : null}
+                          {quotationRevisions.map((revision) => (
+                            <div key={revision.id} className="panel" style={{ padding: 14 }}>
+                              <div style={{ fontWeight: 700 }}>{revision.label}</div>
+                              <div className="muted">{formatDateLabel(revision.createdAt)}</div>
+                              <div style={{ marginTop: 8 }}>Total: {revision.totalAmount || "Not set"}</div>
+                              <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{revision.note || "No revision note."}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
 
-                    {canManage ? (
+                    {canManage && quoteStage !== "final" ? (
                       <QuotationLibraryPanel
                         contracts={contracts}
                         quoteItems={quoteItems}

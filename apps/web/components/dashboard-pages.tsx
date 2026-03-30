@@ -1477,7 +1477,7 @@ export function CreateJobPage() {
                     <div style={{ fontWeight: 800, marginBottom: 16 }}>Quotation</div>
                     <div className="stack">
                       <label className="field">
-                        <span>Rate list</span>
+                        <span>Rate list dropdown</span>
                         <select
                           className="input"
                           onChange={(event) => {
@@ -1503,6 +1503,7 @@ export function CreateJobPage() {
                             <option key={contract.id} value={contract.id}>{contract.name}</option>
                           ))}
                         </select>
+                        <span className="muted" style={{ fontSize: 12 }}>Select the customer rate list to price the quotation items.</span>
                       </label>
                       <TextField label="Quotation reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
                       <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
@@ -2255,7 +2256,7 @@ export function JobRecordPage({
                       {canManage ? (
                         <div className="stack">
                           <label className="field">
-                            <span>Rate list</span>
+                            <span>Rate list dropdown</span>
                             <select
                               className="input"
                               onChange={(event) => {
@@ -2281,6 +2282,7 @@ export function JobRecordPage({
                                 <option key={contract.id} value={contract.id}>{contract.name}</option>
                               ))}
                             </select>
+                            <span className="muted" style={{ fontSize: 12 }}>Select the customer rate list from the dropdown.</span>
                           </label>
                           <TextField label="Reference" onChange={(value) => setQuotation((current) => ({ ...current, reference: value }))} value={quotation.reference} />
                           <TextAreaField label="Scope of works" onChange={(value) => setQuotation((current) => ({ ...current, scope: value }))} value={quotation.scope} />
@@ -4141,49 +4143,75 @@ function QuotationLibraryPanel({
           <TextAreaField label="Description" onChange={(value) => setContractForm((current) => ({ ...current, description: value }))} value={contractForm.description} />
           <button className="button button-subtle" type="submit">Add Rate List</button>
         </form>
-        <div className="stack" style={{ gap: 10 }}>
-          {contracts.map((contract) => (
-            <div key={contract.id} className="panel" style={{ padding: 12 }}>
-              <div className="stack" style={{ gap: 10 }}>
-                <TextField
-                  label="Name"
-                  onChange={(value) => setContractDrafts((current) => ({
+        <div className="panel" style={{ padding: 12, overflowX: "auto" }}>
+          <div style={{ minWidth: 760 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "2fr 1fr 2fr 160px",
+                gap: 12,
+                padding: "0 0 10px",
+                borderBottom: "1px solid var(--line)",
+                fontWeight: 700
+              }}
+            >
+              <div>Name</div>
+              <div>Code</div>
+              <div>Description</div>
+              <div>Action</div>
+            </div>
+            {contracts.map((contract) => (
+              <div
+                key={contract.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 2fr 160px",
+                  gap: 12,
+                  padding: "12px 0",
+                  borderBottom: "1px solid var(--line)",
+                  alignItems: "start"
+                }}
+              >
+                <input
+                  className="input"
+                  onChange={(event) => setContractDrafts((current) => ({
                     ...current,
                     [contract.id]: {
                       ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
-                      name: value
+                      name: event.target.value
                     }
                   }))}
                   value={contractDrafts[contract.id]?.name ?? contract.name}
                 />
-                <TextField
-                  label="Code"
-                  onChange={(value) => setContractDrafts((current) => ({
+                <input
+                  className="input"
+                  onChange={(event) => setContractDrafts((current) => ({
                     ...current,
                     [contract.id]: {
                       ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
-                      code: value
+                      code: event.target.value
                     }
                   }))}
                   value={contractDrafts[contract.id]?.code ?? contract.code}
                 />
-                <TextAreaField
-                  label="Description"
-                  onChange={(value) => setContractDrafts((current) => ({
+                <textarea
+                  className="input"
+                  onChange={(event) => setContractDrafts((current) => ({
                     ...current,
                     [contract.id]: {
                       ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
-                      description: value
+                      description: event.target.value
                     }
                   }))}
+                  rows={2}
                   value={contractDrafts[contract.id]?.description ?? contract.description ?? ""}
                 />
+                <button className="button button-subtle" onClick={() => void saveContract(contract)} type="button">
+                  Save Row
+                </button>
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                <button className="button button-subtle" onClick={() => void saveContract(contract)} type="button">Save Rate List</button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
         <form className="stack" onSubmit={createQuoteItem}>
           <div style={{ fontWeight: 700 }}>Rate items</div>
@@ -4196,33 +4224,64 @@ function QuotationLibraryPanel({
           </div>
           <button className="button button-subtle" type="submit">Add Rate Item</button>
         </form>
-        <div className="stack" style={{ gap: 12 }}>
-          {quoteItems.map((item) => (
-            <div key={item.id} className="panel" style={{ padding: 14 }}>
-              <div style={{ fontWeight: 700 }}>{item.code} - {item.name}</div>
-              <div className="muted">{item.description}</div>
-              <div className="muted" style={{ marginTop: 6 }}>Default: {item.defaultRate} per {item.unit}</div>
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <div className="panel" style={{ padding: 12, overflowX: "auto" }}>
+          <div style={{ minWidth: Math.max(900, 640 + contracts.length * 180) }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `160px 220px 110px 110px ${contracts.map(() => "160px").join(" ")} 160px`,
+                gap: 12,
+                padding: "0 0 10px",
+                borderBottom: "1px solid var(--line)",
+                fontWeight: 700,
+                alignItems: "center"
+              }}
+            >
+              <div>Code</div>
+              <div>Item</div>
+              <div>Unit</div>
+              <div>Default</div>
+              {contracts.map((contract) => (
+                <div key={`header-${contract.id}`}>{contract.name}</div>
+              ))}
+              <div>Action</div>
+            </div>
+            {quoteItems.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `160px 220px 110px 110px ${contracts.map(() => "160px").join(" ")} 160px`,
+                  gap: 12,
+                  padding: "12px 0",
+                  borderBottom: "1px solid var(--line)",
+                  alignItems: "center"
+                }}
+              >
+                <div>{item.code}</div>
+                <div title={item.description}>{item.name}</div>
+                <div>{item.unit}</div>
+                <div>{item.defaultRate}</div>
                 {contracts.map((contract) => (
-                  <TextField
+                  <input
                     key={`${item.id}-${contract.id}`}
-                    label={`${contract.name} rate`}
-                    onChange={(value) => setRateDrafts((current) => ({
+                    className="input"
+                    onChange={(event) => setRateDrafts((current) => ({
                       ...current,
                       [item.id]: {
                         ...(current[item.id] ?? {}),
-                        [contract.id]: value
+                        [contract.id]: event.target.value
                       }
                     }))}
                     value={rateDrafts[item.id]?.[contract.id] ?? ""}
                   />
                 ))}
+                <button className="button button-subtle" onClick={() => void saveQuoteItemRates(item)} type="button">
+                  Save Row
+                </button>
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                <button className="button button-subtle" onClick={() => void saveQuoteItemRates(item)} type="button">Save Rates</button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>

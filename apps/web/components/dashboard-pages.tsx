@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Fragment, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProtectedWorkspace } from "./protected-workspace";
@@ -389,6 +389,70 @@ function getCatalogRate(item: QuoteCatalogItemRecord, contractId: string) {
 
 function getRateListName(contracts: ContractRecord[], contractId: string) {
   return contracts.find((contract) => contract.id === contractId)?.name || "Not set";
+}
+
+function escapeCsvValue(value: string) {
+  if (value.includes("\"") || value.includes(",") || value.includes("\n") || value.includes("\r")) {
+    return `"${value.replaceAll("\"", "\"\"")}"`;
+  }
+
+  return value;
+}
+
+function buildCsvContent(rows: string[][]) {
+  return rows.map((row) => row.map((cell) => escapeCsvValue(cell)).join(",")).join("\r\n");
+}
+
+function parseCsvContent(content: string) {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    const nextCharacter = content[index + 1];
+
+    if (character === "\"") {
+      if (inQuotes && nextCharacter === "\"") {
+        currentCell += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (character === "," && !inQuotes) {
+      currentRow.push(currentCell);
+      currentCell = "";
+      continue;
+    }
+
+    if ((character === "\n" || character === "\r") && !inQuotes) {
+      if (character === "\r" && nextCharacter === "\n") {
+        index += 1;
+      }
+      currentRow.push(currentCell);
+      rows.push(currentRow);
+      currentRow = [];
+      currentCell = "";
+      continue;
+    }
+
+    currentCell += character;
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell);
+    rows.push(currentRow);
+  }
+
+  return rows.filter((row) => row.some((cell) => cell.trim().length > 0));
+}
+
+function normalizeCsvHeader(value: string) {
+  return value.trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, "");
 }
 
 function calculateQuoteTotal(items: QuoteLineItem[]) {
@@ -4037,6 +4101,9 @@ function QuotationLibraryPanel({
   const [itemForm, setItemForm] = useState({ name: "", code: "", description: "", unit: "item", defaultRate: "0.00" });
   const [contractDrafts, setContractDrafts] = useState<Record<string, { name: string; code: string; description: string }>>({});
   const [rateDrafts, setRateDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [selectedContractId, setSelectedContractId] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [uploadingRates, setUploadingRates] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -4049,6 +4116,12 @@ function QuotationLibraryPanel({
         ])
       )
     );
+  }, [contracts]);
+
+  useEffect(() => {
+    setSelectedContractId((current) => current && contracts.some((contract) => contract.id === current)
+      ? current
+      : contracts[0]?.id ?? "");
   }, [contracts]);
 
   useEffect(() => {
@@ -4067,11 +4140,12 @@ function QuotationLibraryPanel({
         body: JSON.stringify(contractForm)
       });
       setContracts((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedContractId(created.id);
       setContractForm({ name: "", code: "", description: "" });
-      setSuccess("Contract added.");
+      setSuccess("Rate list added.");
       setError(null);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Failed to create contract.");
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to create rate list.");
     }
   }
 
@@ -4130,106 +4204,263 @@ function QuotationLibraryPanel({
     }
   }
 
+  async function updateQuoteItemRecord(item: QuoteCatalogItemRecord, overrides?: Partial<QuoteCatalogItemRecord>) {
+    const contractRates = overrides?.contractRates ?? rateDrafts[item.id] ?? item.contractRates ?? {};
+    const updated = await apiRequest<QuoteCatalogItemRecord>(`jobs/quotation/items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: overrides?.name ?? item.name,
+        code: overrides?.code ?? item.code,
+        description: overrides?.description ?? item.description,
+        unit: overrides?.unit ?? item.unit,
+        defaultRate: overrides?.defaultRate ?? item.defaultRate,
+        contractRates
+      })
+    });
+
+    setQuoteItems((current) => current.map((entry) => entry.id === item.id ? { ...updated, contractRates: updated.contractRates ?? {} } : entry));
+    return updated;
+  }
+
+  function downloadSelectedRateList() {
+    const selectedContract = contracts.find((contract) => contract.id === selectedContractId);
+    if (!selectedContract) {
+      setError("Choose a rate list first.");
+      return;
+    }
+
+    const rows = [
+      ["Code", "Item", "Description", "Unit", "Default Rate", "Selected Rate"]
+    ];
+
+    quoteItems
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .forEach((item) => {
+        rows.push([
+          item.code,
+          item.name,
+          item.description ?? "",
+          item.unit,
+          item.defaultRate,
+          rateDrafts[item.id]?.[selectedContract.id] ?? item.contractRates[selectedContract.id] ?? ""
+        ]);
+      });
+
+    const blob = new Blob([buildCsvContent(rows)], { type: "text/csv;charset=utf-8;" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `${selectedContract.name.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/^-|-$/g, "").toLowerCase() || "rate-list"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    setSuccess(`Downloaded ${selectedContract.name} as CSV.`);
+    setError(null);
+  }
+
+  async function importRateListFile(event: ChangeEvent<HTMLInputElement>) {
+    const selectedContract = contracts.find((contract) => contract.id === selectedContractId);
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!selectedContract || !file) {
+      return;
+    }
+
+    try {
+      setUploadingRates(true);
+      const rows = parseCsvContent(await file.text());
+      if (rows.length < 2) {
+        throw new Error("The spreadsheet is empty.");
+      }
+
+      const headers = rows[0].map((header) => normalizeCsvHeader(header));
+      const getValue = (row: string[], ...names: string[]) => {
+        const index = headers.findIndex((header) => names.includes(header));
+        return index >= 0 ? (row[index] ?? "").trim() : "";
+      };
+
+      for (const row of rows.slice(1)) {
+        const code = getValue(row, "code", "itemcode");
+        const name = getValue(row, "item", "name", "title");
+        if (!code || !name) {
+          continue;
+        }
+
+        const description = getValue(row, "description");
+        const unit = getValue(row, "unit");
+        const defaultRate = getValue(row, "defaultrate", "default");
+        const selectedRate = getValue(row, "selectedrate", "rate", "price");
+        const existingItem = quoteItems.find((item) => item.code.trim().toLowerCase() === code.trim().toLowerCase());
+
+        if (existingItem) {
+          const nextContractRates = {
+            ...(rateDrafts[existingItem.id] ?? existingItem.contractRates ?? {}),
+            [selectedContract.id]: selectedRate
+          };
+          setRateDrafts((current) => ({
+            ...current,
+            [existingItem.id]: nextContractRates
+          }));
+          await updateQuoteItemRecord(existingItem, {
+            name,
+            description: description || existingItem.description,
+            unit: unit || existingItem.unit,
+            defaultRate: defaultRate || existingItem.defaultRate,
+            contractRates: nextContractRates
+          });
+          continue;
+        }
+
+        const created = await apiRequest<QuoteCatalogItemRecord>("jobs/quotation/items", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            code,
+            description,
+            unit: unit || "item",
+            defaultRate: defaultRate || "0.00",
+            contractRates: { [selectedContract.id]: selectedRate }
+          })
+        });
+        setQuoteItems((current) => [...current, { ...created, contractRates: created.contractRates ?? {} }].sort((left, right) => left.name.localeCompare(right.name)));
+      }
+
+      setSuccess(`Imported spreadsheet into ${selectedContract.name}.`);
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to import spreadsheet.");
+    } finally {
+      setUploadingRates(false);
+    }
+  }
+
+  const selectedContract = contracts.find((contract) => contract.id === selectedContractId) ?? null;
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleQuoteItems = normalizedSearchTerm
+    ? quoteItems.filter((item) => (
+      item.code.toLowerCase().includes(normalizedSearchTerm) ||
+      item.name.toLowerCase().includes(normalizedSearchTerm) ||
+      item.description.toLowerCase().includes(normalizedSearchTerm)
+    ))
+    : quoteItems;
+
   return (
     <div className="panel" style={{ padding: 20 }}>
       <div style={{ fontWeight: 800, marginBottom: 12 }}>Rates</div>
       <ErrorText error={error} />
       {success ? <div className="callout" style={{ marginBottom: 12 }}>{success}</div> : null}
       <div className="stack">
-        <form className="stack" onSubmit={createContract}>
-          <div style={{ fontWeight: 700 }}>Rate lists</div>
-          <TextField label="Customer or rate list name" onChange={(value) => setContractForm((current) => ({ ...current, name: value }))} value={contractForm.name} />
-          <TextField label="Rate list code" onChange={(value) => setContractForm((current) => ({ ...current, code: value }))} value={contractForm.code} />
-          <TextAreaField label="Description" onChange={(value) => setContractForm((current) => ({ ...current, description: value }))} value={contractForm.description} />
-          <button className="button button-subtle" type="submit">Add Rate List</button>
-        </form>
-        <div className="panel" style={{ padding: 12, overflowX: "auto" }}>
-          <div style={{ minWidth: 760 }}>
-            <div
+        <div className="panel" style={{ padding: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(200px, 1fr) auto auto", gap: 12, alignItems: "end" }}>
+            <label className="field">
+              <span>Rate list dropdown</span>
+              <select className="input" onChange={(event) => setSelectedContractId(event.target.value)} value={selectedContractId}>
+                <option value="">Choose a rate list</option>
+                {contracts.map((contract) => (
+                  <option key={contract.id} value={contract.id}>{contract.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Search items</span>
+              <input className="input" onChange={(event) => setSearchTerm(event.target.value)} placeholder="Code, item, or description" type="search" value={searchTerm} />
+            </label>
+            <button className="button button-subtle" onClick={downloadSelectedRateList} type="button">Download CSV</button>
+            <label
+              className="button button-subtle"
               style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 2fr 160px",
-                gap: 12,
-                padding: "0 0 10px",
-                borderBottom: "1px solid var(--line)",
-                fontWeight: 700
+                justifyContent: "center",
+                cursor: uploadingRates || !selectedContract ? "not-allowed" : "pointer",
+                opacity: !selectedContract ? 0.6 : 1
               }}
             >
-              <div>Name</div>
-              <div>Code</div>
-              <div>Description</div>
-              <div>Action</div>
-            </div>
-            {contracts.map((contract) => (
-              <div
-                key={contract.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 2fr 160px",
-                  gap: 12,
-                  padding: "12px 0",
-                  borderBottom: "1px solid var(--line)",
-                  alignItems: "start"
-                }}
-              >
-                <input
-                  className="input"
-                  onChange={(event) => setContractDrafts((current) => ({
-                    ...current,
-                    [contract.id]: {
-                      ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
-                      name: event.target.value
-                    }
-                  }))}
-                  value={contractDrafts[contract.id]?.name ?? contract.name}
-                />
-                <input
-                  className="input"
-                  onChange={(event) => setContractDrafts((current) => ({
-                    ...current,
-                    [contract.id]: {
-                      ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
-                      code: event.target.value
-                    }
-                  }))}
-                  value={contractDrafts[contract.id]?.code ?? contract.code}
-                />
-                <textarea
-                  className="input"
-                  onChange={(event) => setContractDrafts((current) => ({
-                    ...current,
-                    [contract.id]: {
-                      ...(current[contract.id] ?? { name: contract.name, code: contract.code, description: contract.description ?? "" }),
-                      description: event.target.value
-                    }
-                  }))}
-                  rows={2}
-                  value={contractDrafts[contract.id]?.description ?? contract.description ?? ""}
-                />
-                <button className="button button-subtle" onClick={() => void saveContract(contract)} type="button">
-                  Save Row
-                </button>
-              </div>
-            ))}
+              {uploadingRates ? "Uploading..." : "Upload CSV"}
+              <input accept=".csv,text/csv" disabled={!selectedContract || uploadingRates} hidden onChange={(event) => void importRateListFile(event)} type="file" />
+            </label>
+          </div>
+          <div className="muted" style={{ marginTop: 10 }}>
+            {selectedContract
+              ? `Editing ${selectedContract.name}. Download it as CSV, edit it in Excel, then upload it back into the same list.`
+              : "Choose a rate list to view and edit its spreadsheet."}
           </div>
         </div>
-        <form className="stack" onSubmit={createQuoteItem}>
-          <div style={{ fontWeight: 700 }}>Rate items</div>
-          <TextField label="Item name" onChange={(value) => setItemForm((current) => ({ ...current, name: value }))} value={itemForm.name} />
-          <TextField label="Item code" onChange={(value) => setItemForm((current) => ({ ...current, code: value }))} value={itemForm.code} />
-          <TextAreaField label="Description" onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} value={itemForm.description} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <TextField label="Unit" onChange={(value) => setItemForm((current) => ({ ...current, unit: value }))} value={itemForm.unit} />
-            <TextField label="Default rate" onChange={(value) => setItemForm((current) => ({ ...current, defaultRate: value }))} value={itemForm.defaultRate} />
+
+        <div className="panel" style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 12 }}>Rate list details</div>
+          {selectedContract ? (
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr auto", gap: 12, alignItems: "start" }}>
+              <input
+                className="input"
+                onChange={(event) => setContractDrafts((current) => ({
+                  ...current,
+                  [selectedContract.id]: {
+                    ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
+                    name: event.target.value
+                  }
+                }))}
+                value={contractDrafts[selectedContract.id]?.name ?? selectedContract.name}
+              />
+              <input
+                className="input"
+                onChange={(event) => setContractDrafts((current) => ({
+                  ...current,
+                  [selectedContract.id]: {
+                    ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
+                    code: event.target.value
+                  }
+                }))}
+                value={contractDrafts[selectedContract.id]?.code ?? selectedContract.code}
+              />
+              <textarea
+                className="input"
+                onChange={(event) => setContractDrafts((current) => ({
+                  ...current,
+                  [selectedContract.id]: {
+                    ...(current[selectedContract.id] ?? { name: selectedContract.name, code: selectedContract.code, description: selectedContract.description ?? "" }),
+                    description: event.target.value
+                  }
+                }))}
+                rows={2}
+                value={contractDrafts[selectedContract.id]?.description ?? selectedContract.description ?? ""}
+              />
+              <button className="button button-subtle" onClick={() => void saveContract(selectedContract)} type="button">Save List</button>
+            </div>
+          ) : (
+            <div className="muted">No rate list selected.</div>
+          )}
+        </div>
+
+        <form className="panel stack" onSubmit={createContract} style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700 }}>Add new rate list</div>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr auto", gap: 12, alignItems: "start" }}>
+            <input className="input" onChange={(event) => setContractForm((current) => ({ ...current, name: event.target.value }))} placeholder="Customer or rate list name" value={contractForm.name} />
+            <input className="input" onChange={(event) => setContractForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" value={contractForm.code} />
+            <textarea className="input" onChange={(event) => setContractForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" rows={2} value={contractForm.description} />
+            <button className="button button-subtle" type="submit">Add List</button>
           </div>
-          <button className="button button-subtle" type="submit">Add Rate Item</button>
         </form>
+
+        <form className="panel stack" onSubmit={createQuoteItem} style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700 }}>Add rate item</div>
+          <div style={{ display: "grid", gridTemplateColumns: "180px 2fr 2fr 110px 110px auto", gap: 12, alignItems: "start" }}>
+            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" value={itemForm.code} />
+            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, name: event.target.value }))} placeholder="Item name" value={itemForm.name} />
+            <textarea className="input" onChange={(event) => setItemForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" rows={2} value={itemForm.description} />
+            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, unit: event.target.value }))} placeholder="Unit" value={itemForm.unit} />
+            <input className="input" onChange={(event) => setItemForm((current) => ({ ...current, defaultRate: event.target.value }))} placeholder="Default" value={itemForm.defaultRate} />
+            <button className="button button-subtle" type="submit">Add Item</button>
+          </div>
+        </form>
+
         <div className="panel" style={{ padding: 12, overflowX: "auto" }}>
-          <div style={{ minWidth: Math.max(900, 640 + contracts.length * 180) }}>
+          <div style={{ minWidth: 1120 }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: `160px 220px 110px 110px ${contracts.map(() => "160px").join(" ")} 160px`,
+                gridTemplateColumns: "140px 260px 320px 100px 100px 120px 140px",
                 gap: 12,
                 padding: "0 0 10px",
                 borderBottom: "1px solid var(--line)",
@@ -4239,19 +4470,18 @@ function QuotationLibraryPanel({
             >
               <div>Code</div>
               <div>Item</div>
+              <div>Description</div>
               <div>Unit</div>
               <div>Default</div>
-              {contracts.map((contract) => (
-                <div key={`header-${contract.id}`}>{contract.name}</div>
-              ))}
+              <div>{selectedContract ? `${selectedContract.name} Rate` : "Rate"}</div>
               <div>Action</div>
             </div>
-            {quoteItems.map((item) => (
+            {visibleQuoteItems.map((item) => (
               <div
                 key={item.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: `160px 220px 110px 110px ${contracts.map(() => "160px").join(" ")} 160px`,
+                  gridTemplateColumns: "140px 260px 320px 100px 100px 120px 140px",
                   gap: 12,
                   padding: "12px 0",
                   borderBottom: "1px solid var(--line)",
@@ -4259,28 +4489,33 @@ function QuotationLibraryPanel({
                 }}
               >
                 <div>{item.code}</div>
-                <div title={item.description}>{item.name}</div>
+                <div>{item.name}</div>
+                <div title={item.description}>{item.description || "-"}</div>
                 <div>{item.unit}</div>
                 <div>{item.defaultRate}</div>
-                {contracts.map((contract) => (
-                  <input
-                    key={`${item.id}-${contract.id}`}
-                    className="input"
-                    onChange={(event) => setRateDrafts((current) => ({
+                <input
+                  className="input"
+                  disabled={!selectedContract}
+                  onChange={(event) => {
+                    if (!selectedContract) {
+                      return;
+                    }
+                    setRateDrafts((current) => ({
                       ...current,
                       [item.id]: {
                         ...(current[item.id] ?? {}),
-                        [contract.id]: event.target.value
+                        [selectedContract.id]: event.target.value
                       }
-                    }))}
-                    value={rateDrafts[item.id]?.[contract.id] ?? ""}
-                  />
-                ))}
-                <button className="button button-subtle" onClick={() => void saveQuoteItemRates(item)} type="button">
+                    }));
+                  }}
+                  value={selectedContract ? (rateDrafts[item.id]?.[selectedContract.id] ?? item.contractRates[selectedContract.id] ?? "") : ""}
+                />
+                <button className="button button-subtle" disabled={!selectedContract} onClick={() => void saveQuoteItemRates(item)} type="button">
                   Save Row
                 </button>
               </div>
             ))}
+            {visibleQuoteItems.length === 0 ? <div className="muted" style={{ paddingTop: 12 }}>No rate items match this search.</div> : null}
           </div>
         </div>
       </div>

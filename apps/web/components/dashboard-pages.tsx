@@ -2113,6 +2113,10 @@ export function JobRecordPage({
   const operativeOptions = users.filter((user) => user.role === "OPERATIVE");
   const vehicleOptions = assets.filter((asset) => (asset.kind ?? "GENERAL") === "VEHICLE");
 
+  useEffect(() => {
+    setTaskDefinitions(readTaskDefinitions());
+  }, []);
+
   async function load() {
     try {
       const [nextJob, nextUsers, nextJobs, nextDocuments, nextAssets] = await Promise.all([
@@ -4489,10 +4493,6 @@ function AssetManagementWorkspace({
       setError(caughtError instanceof Error ? caughtError.message : `Failed to load ${title.toLowerCase()}.`);
     }
   }
-
-  useEffect(() => {
-    setTaskDefinitions(readTaskDefinitions());
-  }, []);
 
   useEffect(() => { void load(); }, []);
 

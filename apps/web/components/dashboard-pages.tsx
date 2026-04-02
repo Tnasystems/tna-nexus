@@ -130,7 +130,13 @@ interface JobRecord {
   dailyAssignmentsJson: string;
   assignedOperativeIds: string[];
   assignedVehicleIds: string[];
-  tasks?: Array<{ id: string; title: string; status: string }>;
+  tasks?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    frequency?: string;
+    completedDays?: string[];
+  }>;
 }
 
 interface TaskDefinition {
@@ -144,6 +150,8 @@ interface JobTaskAssignment {
   id: string;
   title: string;
   status: string;
+  frequency: "DAILY";
+  completedDays: string[];
 }
 
 interface AssetRecord {
@@ -249,7 +257,7 @@ function getScheduledDaysForJob(job: JobRecord) {
   return [new Date(job.scheduledFor).toISOString().slice(0, 10)];
 }
 
-function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" | "tasks" | "quotation" = "details") {
+function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" | "tasks" | "forms" | "quotation" = "details") {
   return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
 
@@ -2039,7 +2047,7 @@ export function JobRecordPage({
   initialTab = "details",
   jobId
 }: Readonly<{
-  initialTab?: "details" | "external" | "internal" | "schedule" | "tasks" | "quotation";
+  initialTab?: "details" | "external" | "internal" | "schedule" | "tasks" | "forms" | "quotation";
   jobId: string;
 }>) {
   const [job, setJob] = useState<JobRecord | null>(null);
@@ -2053,7 +2061,7 @@ export function JobRecordPage({
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingDocumentArea, setUploadingDocumentArea] = useState<"EXTERNAL" | "INTERNAL" | null>(null);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule" | "tasks" | "quotation">(initialTab);
+  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule" | "tasks" | "forms" | "quotation">(initialTab);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
@@ -2141,7 +2149,11 @@ export function JobRecordPage({
           ? nextJob.tasks.map((task) => ({
             id: task.id,
             title: task.title,
-            status: task.status
+            status: task.status,
+            frequency: task.frequency === "DAILY" ? "DAILY" : "DAILY",
+            completedDays: Array.isArray(task.completedDays)
+              ? task.completedDays.filter((day): day is string => typeof day === "string")
+              : []
           }))
           : []
       );
@@ -2550,8 +2562,26 @@ export function JobRecordPage({
     setJobTasks((current) => (
       current.some((task) => task.id === definition.id)
         ? current.filter((task) => task.id !== definition.id)
-        : [...current, { id: definition.id, title: definition.title, status: "REQUIRED" }]
+        : [...current, { id: definition.id, title: definition.title, status: "REQUIRED", frequency: "DAILY", completedDays: [] }]
     ));
+  }
+
+  function toggleTaskCompletion(taskId: string, day: string) {
+    setJobTasks((current) => current.map((task) => {
+      if (task.id !== taskId) {
+        return task;
+      }
+
+      const completedDays = task.completedDays.includes(day)
+        ? task.completedDays.filter((entry) => entry !== day)
+        : [...task.completedDays, day].sort();
+
+      return {
+        ...task,
+        completedDays,
+        status: completedDays.length > 0 ? "IN_PROGRESS" : "REQUIRED"
+      };
+    }));
   }
 
   function addQuoteItemToRevisionFromLibrary(revisionId: string, itemId: string) {
@@ -2630,13 +2660,14 @@ export function JobRecordPage({
         const visibleActiveTab = !canManage && (activeTab === "internal" || activeTab === "quotation") ? "external" : activeTab;
         const externalDocuments = documents.filter((document) => (document.visibility ?? "EXTERNAL") === "EXTERNAL");
         const internalDocuments = documents.filter((document) => document.visibility === "INTERNAL");
-        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule" | "tasks" | "quotation"; label: string }> = [
+        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule" | "tasks" | "forms" | "quotation"; label: string }> = [
           { key: "details" as const, label: "Details" },
           ...(canManage ? [{ key: "quotation" as const, label: "Quotation" }] : []),
           { key: "external" as const, label: canManage ? "External Info" : "Information" },
           ...(canManage ? [{ key: "internal" as const, label: "Internal Info" }] : []),
           { key: "schedule" as const, label: "Schedule" },
-          { key: "tasks" as const, label: "Tasks" }
+          { key: "tasks" as const, label: "Tasks" },
+          { key: "forms" as const, label: "Forms" }
         ];
         return (
         <div className="stack">
@@ -3238,7 +3269,10 @@ export function JobRecordPage({
                           {jobTasks.map((task) => (
                             <div key={task.id} className="panel" style={{ padding: 12 }}>
                               <div style={{ fontWeight: 700 }}>{task.title}</div>
-                              <div className="muted">{task.status.replaceAll("_", " ")}</div>
+                              <div className="muted">{task.frequency === "DAILY" ? "Daily task" : task.status.replaceAll("_", " ")}</div>
+                              <div className="muted" style={{ marginTop: 6 }}>
+                                {task.completedDays.length}/{form.scheduledDays.length || 0} daily forms submitted
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -3268,7 +3302,7 @@ export function JobRecordPage({
                     <div className="panel" style={{ padding: 20 }}>
                       <div style={{ fontWeight: 800, marginBottom: 12 }}>Site tasks</div>
                       <div className="muted" style={{ marginBottom: 16 }}>
-                        Choose which task forms the operative needs to complete on site.
+                        Choose which task forms the operative needs to complete each day on site.
                       </div>
                       <div className="stack" style={{ gap: 12 }}>
                         {taskDefinitions.map((task) => {
@@ -3280,6 +3314,7 @@ export function JobRecordPage({
                                   <div style={{ fontWeight: 700 }}>{task.title}</div>
                                   <div className="muted" style={{ marginTop: 6 }}>{task.description}</div>
                                   <div style={{ marginTop: 10, fontSize: 14 }}>{task.question}</div>
+                                  <div className="muted" style={{ marginTop: 10 }}>Frequency: Daily</div>
                                 </div>
                                 {canManage ? (
                                   <button
@@ -3303,7 +3338,7 @@ export function JobRecordPage({
 
                   <div className="stack">
                     <div className="panel" style={{ padding: 20 }}>
-                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Assigned to this job</div>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Daily task summary</div>
                       <div className="stack" style={{ gap: 12 }}>
                         {jobTasks.length === 0 ? <div className="muted">No site tasks selected yet.</div> : null}
                         {jobTasks.map((task) => {
@@ -3311,12 +3346,81 @@ export function JobRecordPage({
                           return (
                             <div key={task.id} className="panel" style={{ padding: 14 }}>
                               <div style={{ fontWeight: 700 }}>{task.title}</div>
-                              <div className="muted" style={{ marginTop: 6 }}>{task.status.replaceAll("_", " ")}</div>
+                              <div className="muted" style={{ marginTop: 6 }}>Required daily</div>
+                              <div className="muted" style={{ marginTop: 6 }}>
+                                {task.completedDays.length}/{form.scheduledDays.length || 0} daily forms submitted
+                              </div>
                               {definition ? <div style={{ marginTop: 10, fontSize: 14 }}>{definition.question}</div> : null}
                             </div>
                           );
                         })}
                       </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {visibleActiveTab === "forms" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+                  <div className="stack">
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Completed forms for this job</div>
+                      <div className="muted" style={{ marginBottom: 16 }}>
+                        Completed daily task checks appear here as job forms.
+                      </div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {jobTasks.flatMap((task) => task.completedDays.map((day) => ({ task, day }))).length === 0 ? (
+                          <div className="muted">No completed forms yet.</div>
+                        ) : null}
+                        {jobTasks.flatMap((task) => task.completedDays.map((day) => ({ task, day }))).map(({ task, day }) => {
+                          const definition = taskDefinitions.find((entry) => entry.id === task.id);
+                          return (
+                            <div key={`${task.id}-${day}`} className="panel" style={{ padding: 16 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                  <div style={{ fontWeight: 700 }}>{task.title}</div>
+                                  <div className="muted" style={{ marginTop: 6 }}>
+                                    Submitted for {new Date(`${day}T00:00:00`).toLocaleDateString()}
+                                  </div>
+                                  {definition ? <div style={{ marginTop: 10 }}>{definition.question}</div> : null}
+                                </div>
+                                <div className="badge">Completed</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="stack">
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Daily completion board</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {jobTasks.length === 0 ? <div className="muted">Assign a task first in the Tasks tab.</div> : null}
+                        {jobTasks.map((task) => (
+                          <div key={task.id} className="panel" style={{ padding: 16 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 10 }}>{task.title}</div>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              {form.scheduledDays.length === 0 ? <div className="muted">No scheduled days on this job yet.</div> : null}
+                              {form.scheduledDays.map((day) => {
+                                const complete = task.completedDays.includes(day);
+                                return (
+                                  <button
+                                    key={`${task.id}-${day}`}
+                                    className={complete ? "button" : "button button-subtle"}
+                                    onClick={() => toggleTaskCompletion(task.id, day)}
+                                    type="button"
+                                  >
+                                    {new Date(`${day}T00:00:00`).toLocaleDateString()}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {canManage ? <button className="button" onClick={handleSave} style={{ marginTop: 16 }} type="button">Save Forms</button> : null}
                     </div>
                   </div>
                 </div>

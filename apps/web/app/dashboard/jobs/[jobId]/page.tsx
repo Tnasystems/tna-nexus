@@ -13,6 +13,8 @@ export default async function DashboardJobRecordRoute({
     ? "schedule"
     : resolvedSearchParams?.tab === "tasks"
     ? "tasks"
+    : resolvedSearchParams?.tab === "forms"
+    ? "forms"
     : resolvedSearchParams?.tab === "quotation"
     ? "quotation"
     : resolvedSearchParams?.tab === "external"

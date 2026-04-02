@@ -133,6 +133,19 @@ interface JobRecord {
   tasks?: Array<{ id: string; title: string; status: string }>;
 }
 
+interface TaskDefinition {
+  id: string;
+  title: string;
+  description: string;
+  question: string;
+}
+
+interface JobTaskAssignment {
+  id: string;
+  title: string;
+  status: string;
+}
+
 interface AssetRecord {
   id: string;
   name: string;
@@ -147,6 +160,41 @@ interface AssetRecord {
 }
 
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
+const TASK_DEFINITIONS_STORAGE_KEY = "tna-task-definitions";
+const DEFAULT_TASK_DEFINITIONS: TaskDefinition[] = [
+  {
+    id: "ppe",
+    title: "PPE",
+    description: "Simple on-site check for operative readiness before work starts.",
+    question: "Have you got your ppe"
+  }
+];
+
+function readTaskDefinitions() {
+  if (typeof window === "undefined") {
+    return DEFAULT_TASK_DEFINITIONS;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(TASK_DEFINITIONS_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_TASK_DEFINITIONS;
+    }
+
+    const parsed = JSON.parse(raw) as TaskDefinition[];
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_TASK_DEFINITIONS;
+  } catch {
+    return DEFAULT_TASK_DEFINITIONS;
+  }
+}
+
+function persistTaskDefinitions(definitions: TaskDefinition[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(TASK_DEFINITIONS_STORAGE_KEY, JSON.stringify(definitions));
+}
 
 function canManageWorkspace(role: string) {
   return MANAGER_ROLES.has(role);
@@ -201,7 +249,7 @@ function getScheduledDaysForJob(job: JobRecord) {
   return [new Date(job.scheduledFor).toISOString().slice(0, 10)];
 }
 
-function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" | "quotation" = "details") {
+function jobDetailHref(jobId: string, tab: "details" | "external" | "internal" | "schedule" | "tasks" | "quotation" = "details") {
   return `/dashboard/jobs/${encodeURIComponent(jobId)}?tab=${tab}`;
 }
 
@@ -1991,7 +2039,7 @@ export function JobRecordPage({
   initialTab = "details",
   jobId
 }: Readonly<{
-  initialTab?: "details" | "external" | "internal" | "schedule" | "quotation";
+  initialTab?: "details" | "external" | "internal" | "schedule" | "tasks" | "quotation";
   jobId: string;
 }>) {
   const [job, setJob] = useState<JobRecord | null>(null);
@@ -2005,7 +2053,7 @@ export function JobRecordPage({
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingDocumentArea, setUploadingDocumentArea] = useState<"EXTERNAL" | "INTERNAL" | null>(null);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule" | "quotation">(initialTab);
+  const [activeTab, setActiveTab] = useState<"details" | "external" | "internal" | "schedule" | "tasks" | "quotation">(initialTab);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
@@ -2016,6 +2064,8 @@ export function JobRecordPage({
   const [quoteStage, setQuoteStage] = useState<"initial" | "revision" | "final">("initial");
   const [selectedRevisionId, setSelectedRevisionId] = useState("");
   const [finalMeasure, setFinalMeasure] = useState<FinalMeasureRecord>(() => createEmptyFinalMeasure());
+  const [jobTasks, setJobTasks] = useState<JobTaskAssignment[]>([]);
+  const [taskDefinitions, setTaskDefinitions] = useState<TaskDefinition[]>(DEFAULT_TASK_DEFINITIONS);
   const [quoteItemSearchTerm, setQuoteItemSearchTerm] = useState("");
   const [revisionQuoteItemSearchTerm, setRevisionQuoteItemSearchTerm] = useState("");
   const [initialQuoteFieldVisibility, setInitialQuoteFieldVisibility] = useState({
@@ -2082,6 +2132,15 @@ export function JobRecordPage({
       setQuotationRevisions(nextRevisions);
       setSelectedRevisionId(nextRevisions.length > 0 ? nextRevisions[nextRevisions.length - 1].id : "");
       setFinalMeasure(parseFinalMeasure(nextJob.finalMeasureJson));
+      setJobTasks(
+        Array.isArray(nextJob.tasks)
+          ? nextJob.tasks.map((task) => ({
+            id: task.id,
+            title: task.title,
+            status: task.status
+          }))
+          : []
+      );
       const scheduledDays = (nextJob.scheduledDays ?? []).length > 0
         ? [...nextJob.scheduledDays].sort()
         : [nextJob.scheduledFor ? new Date(nextJob.scheduledFor).toISOString().slice(0, 10) : ""].filter(Boolean);
@@ -2322,6 +2381,7 @@ export function JobRecordPage({
           quotation,
           quotationRevisions,
           finalMeasure,
+          tasks: jobTasks,
           scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
           scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
           scheduledStartTime: form.scheduledStartTime || undefined,
@@ -2482,6 +2542,14 @@ export function JobRecordPage({
     });
   }
 
+  function toggleJobTask(definition: TaskDefinition) {
+    setJobTasks((current) => (
+      current.some((task) => task.id === definition.id)
+        ? current.filter((task) => task.id !== definition.id)
+        : [...current, { id: definition.id, title: definition.title, status: "REQUIRED" }]
+    ));
+  }
+
   function addQuoteItemToRevisionFromLibrary(revisionId: string, itemId: string) {
     if (!itemId) {
       return;
@@ -2558,12 +2626,13 @@ export function JobRecordPage({
         const visibleActiveTab = !canManage && (activeTab === "internal" || activeTab === "quotation") ? "external" : activeTab;
         const externalDocuments = documents.filter((document) => (document.visibility ?? "EXTERNAL") === "EXTERNAL");
         const internalDocuments = documents.filter((document) => document.visibility === "INTERNAL");
-        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule" | "quotation"; label: string }> = [
+        const tabs: Array<{ key: "details" | "external" | "internal" | "schedule" | "tasks" | "quotation"; label: string }> = [
           { key: "details" as const, label: "Details" },
           ...(canManage ? [{ key: "quotation" as const, label: "Quotation" }] : []),
           { key: "external" as const, label: canManage ? "External Info" : "Information" },
           ...(canManage ? [{ key: "internal" as const, label: "Internal Info" }] : []),
-          { key: "schedule" as const, label: "Schedule" }
+          { key: "schedule" as const, label: "Schedule" },
+          { key: "tasks" as const, label: "Tasks" }
         ];
         return (
         <div className="stack">
@@ -2622,7 +2691,7 @@ export function JobRecordPage({
                       </div>
                       <div>
                         <div className="muted">Tasks</div>
-                        <div style={{ fontWeight: 700 }}>{job?.tasks?.length ?? 0}</div>
+                        <div style={{ fontWeight: 700 }}>{jobTasks.length}</div>
                       </div>
                       <div>
                         <div className="muted">Quote status</div>
@@ -3161,10 +3230,11 @@ export function JobRecordPage({
                       <div>
                         <div className="muted">Tasks</div>
                         <div className="stack" style={{ gap: 10 }}>
-                          {(job?.tasks ?? []).map((task) => (
+                          {jobTasks.length === 0 ? <div className="muted">No site tasks selected yet.</div> : null}
+                          {jobTasks.map((task) => (
                             <div key={task.id} className="panel" style={{ padding: 12 }}>
                               <div style={{ fontWeight: 700 }}>{task.title}</div>
-                              <div className="muted">{task.status}</div>
+                              <div className="muted">{task.status.replaceAll("_", " ")}</div>
                             </div>
                           ))}
                         </div>
@@ -3182,6 +3252,66 @@ export function JobRecordPage({
                             );
                           })}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {visibleActiveTab === "tasks" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+                  <div className="stack">
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Site tasks</div>
+                      <div className="muted" style={{ marginBottom: 16 }}>
+                        Choose which task forms the operative needs to complete on site.
+                      </div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {taskDefinitions.map((task) => {
+                          const assigned = jobTasks.some((entry) => entry.id === task.id);
+                          return (
+                            <div key={task.id} className="panel" style={{ padding: 16 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
+                                <div>
+                                  <div style={{ fontWeight: 700 }}>{task.title}</div>
+                                  <div className="muted" style={{ marginTop: 6 }}>{task.description}</div>
+                                  <div style={{ marginTop: 10, fontSize: 14 }}>{task.question}</div>
+                                </div>
+                                {canManage ? (
+                                  <button
+                                    className={assigned ? "button" : "button button-subtle"}
+                                    onClick={() => toggleJobTask(task)}
+                                    type="button"
+                                  >
+                                    {assigned ? "Assigned" : "Assign task"}
+                                  </button>
+                                ) : (
+                                  <div className="badge">{assigned ? "Assigned" : "Not required"}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {canManage ? <button className="button" onClick={handleSave} style={{ marginTop: 16 }} type="button">Save Tasks</button> : null}
+                    </div>
+                  </div>
+
+                  <div className="stack">
+                    <div className="panel" style={{ padding: 20 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 12 }}>Assigned to this job</div>
+                      <div className="stack" style={{ gap: 12 }}>
+                        {jobTasks.length === 0 ? <div className="muted">No site tasks selected yet.</div> : null}
+                        {jobTasks.map((task) => {
+                          const definition = taskDefinitions.find((entry) => entry.id === task.id);
+                          return (
+                            <div key={task.id} className="panel" style={{ padding: 14 }}>
+                              <div style={{ fontWeight: 700 }}>{task.title}</div>
+                              <div className="muted" style={{ marginTop: 6 }}>{task.status.replaceAll("_", " ")}</div>
+                              {definition ? <div style={{ marginTop: 10, fontSize: 14 }}>{definition.question}</div> : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -4360,6 +4490,10 @@ function AssetManagementWorkspace({
     }
   }
 
+  useEffect(() => {
+    setTaskDefinitions(readTaskDefinitions());
+  }, []);
+
   useEffect(() => { void load(); }, []);
 
   function beginEdit(asset: AssetRecord) {
@@ -5164,6 +5298,76 @@ export function DocumentsPage() {
           </article>
         </PanelGrid>
       )}
+    </ProtectedWorkspace>
+  );
+}
+
+export function TasksPage() {
+  const [tasks, setTasks] = useState<TaskDefinition[]>(DEFAULT_TASK_DEFINITIONS);
+  const [title, setTitle] = useState("PPE");
+  const [question, setQuestion] = useState("Have you got your ppe");
+
+  useEffect(() => {
+    setTasks(readTaskDefinitions());
+  }, []);
+
+  useEffect(() => {
+    persistTaskDefinitions(tasks);
+  }, [tasks]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!title.trim() || !question.trim()) {
+      return;
+    }
+
+    setTasks((current) => [
+      ...current.filter((task) => task.id !== title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")),
+      {
+        id: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        title: title.trim(),
+        description: "Simple on-site task form for operatives to complete.",
+        question: question.trim()
+      }
+    ]);
+    setTitle("");
+    setQuestion("");
+  }
+
+  return (
+    <ProtectedWorkspace allow="tenant" description="Create simple site task forms that managers can assign to jobs." title="Tasks">
+      {(session) => {
+        const canManage = canManageWorkspace(session.user.role);
+        return (
+        <PanelGrid>
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>Create task form</h2>
+            {canManage ? (
+              <form className="stack" onSubmit={handleSubmit}>
+                <TextField label="Task name" onChange={setTitle} value={title} />
+                <TextAreaField label="Question" onChange={setQuestion} rows={3} value={question} />
+                <button className="button" type="submit">Create Task</button>
+              </form>
+            ) : (
+              <div className="muted">Task forms are created by managers and directors.</div>
+            )}
+          </article>
+          <article className="panel" style={{ padding: 24 }}>
+            <h2 style={{ marginTop: 0 }}>Available task forms</h2>
+            <div className="stack">
+              {tasks.map((task) => (
+                <div key={task.id} className="panel" style={{ padding: 16 }}>
+                  <div style={{ fontWeight: 700 }}>{task.title}</div>
+                  <div className="muted" style={{ marginTop: 6 }}>{task.description}</div>
+                  <div style={{ marginTop: 12 }}>{task.question}</div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </PanelGrid>
+        );
+      }}
     </ProtectedWorkspace>
   );
 }

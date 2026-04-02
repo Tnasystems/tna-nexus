@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Bell, BriefcaseBusiness, Building2, CalendarDays, ClipboardCheck, FileBarChart2, FileText, Home, LogOut, Shield, Users, Wrench } from "lucide-react";
+import { Banknote, Bell, BriefcaseBusiness, Building2, CalendarDays, ClipboardCheck, FileBarChart2, FileText, Home, ListTodo, LogOut, Shield, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BrandLogo } from "./brand-logo";
@@ -16,6 +16,7 @@ const tenantNav = [
   { label: "Forms", href: "/dashboard/forms", icon: ClipboardCheck },
   { label: "Assets", href: "/dashboard/assets", icon: Wrench },
   { label: "Documents", href: "/dashboard/documents", icon: FileText },
+  { label: "Tasks", href: "/dashboard/tasks", icon: ListTodo },
   { label: "Notifications", href: "/dashboard/notifications", icon: Bell },
   { label: "Reporting", href: "/dashboard/reporting", icon: FileBarChart2 }
 ];
@@ -45,6 +46,7 @@ export function WorkspaceShell({
   const router = useRouter();
   const isSupportSession = session.user.role === "PLATFORM_ADMIN" && !!session.user.companyId && !!session.user.tenantSlug;
   const isOperative = session.user.role === "OPERATIVE";
+  const showQuickLinks = session.user.role === "PLATFORM_ADMIN" || session.user.role === "DIRECTOR";
   const nav = session.user.role === "PLATFORM_ADMIN" && !isSupportSession
     ? adminNav
     : isOperative
@@ -73,12 +75,14 @@ export function WorkspaceShell({
                   </div>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <Link className="badge" href="/">Home</Link>
-                <Link className="badge" href="/dashboard/settings">Settings</Link>
-                <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a>
-                {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
-              </div>
+              {showQuickLinks || isSupportSession ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Link className="badge" href="/">Home</Link>
+                  <Link className="badge" href="/dashboard/settings">Settings</Link>
+                  {showQuickLinks ? <a className="badge" href="/api/docs" rel="noreferrer" target="_blank">Swagger</a> : null}
+                  {isSupportSession ? <Link className="badge" href="/dashboard/admin">Back to Admin</Link> : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="stack" style={{ marginTop: 28 }}>

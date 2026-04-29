@@ -11,6 +11,14 @@ import { applyThemePreference, persistThemePreference, readThemePreference, type
 const ROLE_VALUES = ["PLATFORM_ADMIN", "DIRECTOR", "MANAGER", "OPERATIVE"] as const;
 const JOB_STATUS_VALUES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELLED"] as const;
 
+function createClientId() {
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function PanelGrid({ children }: Readonly<{ children: React.ReactNode }>) {
   return <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>{children}</section>;
 }
@@ -381,7 +389,7 @@ interface FinalMeasureRecord {
 
 function createEmptyQuoteItem(): QuoteLineItem {
   return {
-    id: crypto.randomUUID(),
+    id: createClientId(),
     sourceItemId: "",
     code: "",
     title: "",
@@ -431,7 +439,7 @@ function parseQuotation(value: string | null | undefined) {
   const parsed = parseJsonObject<Partial<QuotationRecord>>(value, {});
   const items = Array.isArray(parsed.items) && parsed.items.length > 0
     ? parsed.items.map((item) => ({
-      id: typeof item?.id === "string" && item.id ? item.id : crypto.randomUUID(),
+      id: typeof item?.id === "string" && item.id ? item.id : createClientId(),
       sourceItemId: typeof item?.sourceItemId === "string" ? item.sourceItemId : "",
       code: typeof item?.code === "string" ? item.code : "",
       title: typeof item?.title === "string" ? item.title : "",
@@ -453,7 +461,7 @@ function parseQuotationRevisions(value: string | null | undefined) {
   const parsed = parseJsonObject<QuotationRevision[]>(value, []);
   return Array.isArray(parsed)
     ? parsed.map((revision) => ({
-      id: typeof revision?.id === "string" && revision.id ? revision.id : crypto.randomUUID(),
+      id: typeof revision?.id === "string" && revision.id ? revision.id : createClientId(),
       label: typeof revision?.label === "string" ? revision.label : "Revision",
       createdAt: typeof revision?.createdAt === "string" ? revision.createdAt : new Date().toISOString(),
       contractId: typeof revision?.contractId === "string" ? revision.contractId : "",
@@ -465,7 +473,7 @@ function parseQuotationRevisions(value: string | null | undefined) {
       totalAmount: typeof revision?.totalAmount === "string" ? revision.totalAmount : "",
       items: Array.isArray(revision?.items)
         ? revision.items.map((item) => ({
-          id: typeof item?.id === "string" && item.id ? item.id : crypto.randomUUID(),
+          id: typeof item?.id === "string" && item.id ? item.id : createClientId(),
           sourceItemId: typeof item?.sourceItemId === "string" ? item.sourceItemId : "",
           code: typeof item?.code === "string" ? item.code : "",
           title: typeof item?.title === "string" ? item.title : "",
@@ -1629,7 +1637,7 @@ export function CreateJobPage() {
       const nextItems = [
         ...current.items,
         {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           sourceItemId: matchedItem.id,
           code: matchedItem.code,
           title: matchedItem.name,
@@ -2521,14 +2529,14 @@ export function JobRecordPage({
         assumptions: source.assumptions,
         revisionNotes: source.note,
         totalAmount: source.totalAmount,
-        items: source.items.map((item) => ({ ...item, id: crypto.randomUUID() }))
+        items: source.items.map((item) => ({ ...item, id: createClientId() }))
       }
       : {
         ...quotation,
-        items: quotation.items.map((item) => ({ ...item, id: crypto.randomUUID() }))
+        items: quotation.items.map((item) => ({ ...item, id: createClientId() }))
       };
     const snapshot: QuotationRevision = {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       label: getNextRevisionLabel(),
       createdAt: new Date().toISOString(),
       contractId: base.contractId,
@@ -2622,7 +2630,7 @@ export function JobRecordPage({
       const nextItems = [
         ...revision.items,
         {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           sourceItemId: matchedItem.id,
           code: matchedItem.code,
           title: matchedItem.name,
@@ -2655,7 +2663,7 @@ export function JobRecordPage({
       const nextItems = [
         ...current.items,
         {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           sourceItemId: matchedItem.id,
           code: matchedItem.code,
           title: matchedItem.name,
@@ -4178,7 +4186,7 @@ export function UserRecordPage({
     setTrainingRecords((current) => [
       ...current,
       {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         name: "New Certificate",
         expiresOn: "",
         certificateFileName: ""

@@ -7,7 +7,9 @@ import { ProtectedWorkspace } from "./protected-workspace";
 import { apiRequest, apiRequestBlob } from "../lib/api";
 import { buildSession, persistSession, type AppSession, type AuthTokenResponse } from "../lib/auth";
 import { applyThemePreference, persistThemePreference, readThemePreference, type ThemePreference } from "../lib/theme";
-import { JOB_STATUS_VALUES, ROLE_VALUES } from "@tna-nexus/shared";
+
+const ROLE_VALUES = ["PLATFORM_ADMIN", "DIRECTOR", "MANAGER", "OPERATIVE"] as const;
+const JOB_STATUS_VALUES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELLED"] as const;
 
 function PanelGrid({ children }: Readonly<{ children: React.ReactNode }>) {
   return <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>{children}</section>;

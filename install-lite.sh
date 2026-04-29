@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env}"
 INSTALL_DEPS="${INSTALL_DEPS:-yes}"
+BUILD_APPS="${BUILD_APPS:-yes}"
 OVERWRITE_ENV="${OVERWRITE_ENV:-no}"
 POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
@@ -30,6 +31,7 @@ Usage:
 
 Optional environment variables:
   INSTALL_DEPS=yes|no
+  BUILD_APPS=yes|no
   OVERWRITE_ENV=yes|no
   ENV_FILE=/path/to/.env
   POSTGRES_HOST=127.0.0.1
@@ -42,7 +44,7 @@ Optional environment variables:
   DEMO_COMPANY_DB_PASSWORD='ChangeMeTenant123!'
 
 This script prepares a local test install only.
-It does not configure systemd, nginx, certbot, or a dedicated app user.
+It does not configure systemd, nginx, certbot, sudo users, or background services.
 EOF
 }
 
@@ -173,13 +175,31 @@ ${PNPM_CMD} --filter @tna-nexus/api prisma:migrate:platform
 echo "Seeding platform and demo tenant..."
 ${PNPM_CMD} --filter @tna-nexus/api seed
 
+if [[ "${BUILD_APPS}" == "yes" ]]; then
+  echo "Building API and web app for local testing..."
+  ${PNPM_CMD} --filter @tna-nexus/api build
+  ${PNPM_CMD} --filter @tna-nexus/web build
+
+  echo "Linking generated Prisma clients into API dist runtime..."
+  mkdir -p "${REPO_ROOT}/apps/api/dist/generated"
+  ln -sfn "${REPO_ROOT}/apps/api/src/generated/platform-client" "${REPO_ROOT}/apps/api/dist/generated/platform-client"
+  ln -sfn "${REPO_ROOT}/apps/api/src/generated/tenant-client" "${REPO_ROOT}/apps/api/dist/generated/tenant-client"
+fi
+
 cat <<'EOF'
 
 Local test install complete.
 
-Start the apps with:
+Manual test commands:
   pnpm --filter @tna-nexus/api dev
   pnpm --filter @tna-nexus/web dev
+
+Or run both together:
+  pnpm dev
+
+Production-style local test commands:
+  pnpm --filter @tna-nexus/api start
+  pnpm --filter @tna-nexus/web start
 
 Default local URLs:
   Web: http://localhost:3000

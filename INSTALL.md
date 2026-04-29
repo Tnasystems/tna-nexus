@@ -44,7 +44,7 @@ bash install-lite.sh
 Optional:
 
 ```bash
-POSTGRES_PASSWORD=postgres OVERWRITE_ENV=yes bash install-lite.sh
+POSTGRES_PASSWORD=postgres OVERWRITE_ENV=yes BUILD_APPS=yes bash install-lite.sh
 ```
 
 This script:
@@ -55,8 +55,16 @@ This script:
 - generates Prisma clients
 - runs the platform migration
 - seeds the platform admin and demo tenant
+- optionally builds the API and web app locally
+- does not install or register any services
 
 After it completes, start the apps manually:
+
+```bash
+pnpm dev
+```
+
+Or start them separately:
 
 ```bash
 pnpm --filter @tna-nexus/api dev

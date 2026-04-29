@@ -30,3 +30,35 @@ Notes:
 - the installer waits for both `http://127.0.0.1:4000/api/v1/health` and `http://127.0.0.1:3000` before reporting success
 - if `ufw` is active, the installer opens `Nginx Full`
 - the purge script removes the app files, `systemd` services, Nginx site, and the platform/demo PostgreSQL databases so you can retry on the same machine
+
+## Local Test Install
+
+For a local-only setup without `systemd`, Nginx, or Certbot:
+
+```bash
+git clone https://github.com/Tnasystems/tna-nexus.git
+cd tna-nexus
+bash install-lite.sh
+```
+
+Optional:
+
+```bash
+POSTGRES_PASSWORD=postgres OVERWRITE_ENV=yes bash install-lite.sh
+```
+
+This script:
+- writes a local `.env` if one does not already exist
+- ensures the platform database exists
+- installs dependencies
+- builds `shared`
+- generates Prisma clients
+- runs the platform migration
+- seeds the platform admin and demo tenant
+
+After it completes, start the apps manually:
+
+```bash
+pnpm --filter @tna-nexus/api dev
+pnpm --filter @tna-nexus/web dev
+```

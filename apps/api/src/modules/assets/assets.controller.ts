@@ -18,6 +18,16 @@ export class AssetsController {
     return this.service.list(user);
   }
 
+  @Post("import-vehicles")
+  importVehicles(@CurrentUser() user: JwtUser) {
+    return this.service.importVehicles(user);
+  }
+
+  @Get(":assetId/tracking")
+  getTracking(@CurrentUser() user: JwtUser, @Param("assetId") assetId: string) {
+    return this.service.getTracking(user, assetId);
+  }
+
   @Post()
   create(@CurrentUser() user: JwtUser, @Body() body: CreateAssetDto) {
     return this.service.create(user, body);

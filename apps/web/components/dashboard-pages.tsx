@@ -167,6 +167,24 @@ interface AssetRecord {
   updatedAt?: string | null;
 }
 
+interface VehicleImportResult {
+  created: number;
+  updated: number;
+  totalDevices: number;
+}
+
+interface VehicleTrackingPayload {
+  latitude: number;
+  longitude: number;
+  lastUpdatedAt: string | null;
+  speedKph: number | null;
+  heading: number | null;
+  locationLabel: string;
+  mapUrl: string;
+  deviceName: string | null;
+  imei: string | null;
+}
+
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
 const TASK_DEFINITIONS_STORAGE_KEY = "tna-task-definitions";
 const DEFAULT_TASK_DEFINITIONS: TaskDefinition[] = [
@@ -4563,7 +4581,10 @@ function AssetManagementWorkspace({
 }>) {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [syncingVehicles, setSyncingVehicles] = useState(false);
+  const [trackingAssetId, setTrackingAssetId] = useState<string | null>(null);
   const emptyForm = {
     name: "",
     serialNumber: "",
@@ -4574,6 +4595,7 @@ function AssetManagementWorkspace({
     nextServiceDueAt: ""
   };
   const [form, setForm] = useState(emptyForm);
+  const isVehicleWorkspace = kind === "VEHICLE";
 
   async function load() {
     try {
@@ -4631,6 +4653,7 @@ function AssetManagementWorkspace({
         })
       });
       resetForm();
+      setSuccess(`${editingAssetId ? "Updated" : "Created"} ${itemLabel}.`);
       await load();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : `Failed to save ${title.toLowerCase()}.`);
@@ -4643,9 +4666,44 @@ function AssetManagementWorkspace({
       if (editingAssetId === assetId) {
         resetForm();
       }
+      setSuccess(`${itemLabel[0]?.toUpperCase() ?? ""}${itemLabel.slice(1)} removed.`);
       await load();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : `Failed to remove ${title.toLowerCase()}.`);
+    }
+  }
+
+  async function handleImportVehicles() {
+    try {
+      setSyncingVehicles(true);
+      const result = await apiRequest<VehicleImportResult>("assets/import-vehicles", {
+        method: "POST"
+      });
+      setSuccess(`Imported ${result.totalDevices} tracked vehicles. Created ${result.created} and updated ${result.updated}.`);
+      setError(null);
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to import vehicles.");
+    } finally {
+      setSyncingVehicles(false);
+    }
+  }
+
+  async function handleTrackVehicle(asset: AssetRecord) {
+    try {
+      setTrackingAssetId(asset.id);
+      const tracking = await apiRequest<VehicleTrackingPayload>(`assets/${asset.id}/tracking`);
+      window.open(tracking.mapUrl, "_blank", "noopener,noreferrer");
+      setSuccess(
+        tracking.locationLabel
+          ? `Opened live tracking for ${asset.name}: ${tracking.locationLabel}.`
+          : `Opened live tracking for ${asset.name}.`
+      );
+      setError(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to open live tracking.");
+    } finally {
+      setTrackingAssetId(null);
     }
   }
 
@@ -4677,9 +4735,22 @@ function AssetManagementWorkspace({
                 </div>
               </form>
               <ErrorText error={error} />
+              {success ? <div className="callout" style={{ marginTop: 12 }}>{success}</div> : null}
             </article>
             <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>{title}</h2>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <h2 style={{ marginTop: 0, marginBottom: 0 }}>{title}</h2>
+                {isVehicleWorkspace ? (
+                  <button className="button button-subtle" disabled={syncingVehicles} onClick={() => void handleImportVehicles()} type="button">
+                    {syncingVehicles ? "Syncing..." : "Import From Tracking"}
+                  </button>
+                ) : null}
+              </div>
+              {isVehicleWorkspace ? (
+                <div className="muted" style={{ marginTop: 10 }}>
+                  Pull the latest Crystal Ball device list into your vehicle records, then use Track to open a live map.
+                </div>
+              ) : null}
               <div className="stack">
                 {assets.length === 0 ? <div className="muted">{emptyMessage}</div> : null}
                 {assets.map((asset) => (
@@ -4695,6 +4766,16 @@ function AssetManagementWorkspace({
                     <div className="muted">Next service due: {formatDateLabel(asset.nextServiceDueAt)}</div>
                     {asset.notes ? <div style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{asset.notes}</div> : null}
                     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+                      {isVehicleWorkspace ? (
+                        <button
+                          className="button"
+                          disabled={trackingAssetId === asset.id}
+                          onClick={() => void handleTrackVehicle(asset)}
+                          type="button"
+                        >
+                          {trackingAssetId === asset.id ? "Opening..." : "Track"}
+                        </button>
+                      ) : null}
                       <button className="button button-subtle" onClick={() => beginEdit(asset)} type="button">Edit</button>
                       <button className="button button-danger" onClick={() => void handleDelete(asset.id)} type="button">Remove</button>
                     </div>

@@ -22,6 +22,8 @@ Tenant-scoped operations:
 - `POST /timesheets/clock-in`
 - `POST /timesheets/clock-out`
 - `GET/POST /assets`
+- `POST /assets/import-vehicles`
+- `GET /assets/:assetId/tracking`
 - `GET /documents`
 - `POST /documents/placeholder`
 - `GET /reporting/summary`

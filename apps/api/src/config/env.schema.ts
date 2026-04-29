@@ -23,7 +23,10 @@ export const envSchema = z.object({
   DEMO_COMPANY_NAME: z.string().min(3),
   DEMO_COMPANY_DB_NAME: z.string().min(3),
   DEMO_COMPANY_DB_USER: z.string().min(3),
-  DEMO_COMPANY_DB_PASSWORD: z.string().min(8)
+  DEMO_COMPANY_DB_PASSWORD: z.string().min(8),
+  CRYSTAL_BALL_BASE_URL: z.string().url().optional(),
+  CRYSTAL_BALL_ACCESS_KEY: z.string().min(1).optional(),
+  CRYSTAL_BALL_PRIVATE_KEY: z.string().min(1).optional()
 });
 
 export type Env = z.infer<typeof envSchema>;

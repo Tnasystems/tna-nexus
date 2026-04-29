@@ -293,6 +293,15 @@ async function requestVehicleTracking(assetId: string, portalLogin?: PortalLogin
   );
 }
 
+function buildMiniMapEmbedUrl(latitude: number, longitude: number) {
+  const delta = 0.008;
+  const left = longitude - delta;
+  const right = longitude + delta;
+  const top = latitude + delta;
+  const bottom = latitude - delta;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${latitude}%2C${longitude}`;
+}
+
 function toDateKey(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 }
@@ -4064,19 +4073,39 @@ function CalendarWorkspace({
                     <div
                       key={state.asset.id}
                       className="panel"
-                      style={{ padding: 14, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}
+                      style={{ padding: 14, display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 14, alignItems: "start" }}
                     >
                       <div>
                         <div style={{ fontWeight: 700 }}>{state.asset.name}</div>
                         <div className="muted">{state.asset.registrationNumber || state.asset.serialNumber}</div>
                         <div className="muted" style={{ marginTop: 6 }}>{state.tracking?.locationLabel || state.error || "Waiting for location"}</div>
                         {state.tracking?.lastUpdatedAt ? <div className="muted">Updated: {state.tracking.lastUpdatedAt}</div> : null}
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                          {state.tracking?.mapUrl ? (
+                            <button className="button" onClick={() => window.open(state.tracking?.mapUrl, "_blank", "noopener,noreferrer")} type="button">
+                              Open Map
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
-                      {state.tracking?.mapUrl ? (
-                        <button className="button" onClick={() => window.open(state.tracking?.mapUrl, "_blank", "noopener,noreferrer")} type="button">
-                          Open Map
-                        </button>
-                      ) : null}
+                      <div>
+                        {state.tracking ? (
+                          <iframe
+                            src={buildMiniMapEmbedUrl(state.tracking.latitude, state.tracking.longitude)}
+                            style={{ width: "100%", height: 180, border: 0, borderRadius: 14, background: "rgba(15, 23, 42, 0.2)" }}
+                            loading="lazy"
+                            referrerPolicy="no-referrer-when-downgrade"
+                            title={`Map for ${state.asset.name}`}
+                          />
+                        ) : (
+                          <div
+                            className="callout"
+                            style={{ minHeight: 180, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}
+                          >
+                            Live map preview unavailable for this vehicle.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

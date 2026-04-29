@@ -199,8 +199,14 @@ interface PortalLoginFormState {
   username: string;
   password: string;
 }
+interface CalendarVehicleTrackingState {
+  asset: AssetRecord;
+  error: string | null;
+  tracking: VehicleTrackingPayload | null;
+}
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
 const TASK_DEFINITIONS_STORAGE_KEY = "tna-task-definitions";
+const PORTAL_LOGIN_STORAGE_KEY = "tna-crystal-ball-login";
 const DEFAULT_TASK_DEFINITIONS: TaskDefinition[] = [
   {
     id: "ppe",
@@ -236,8 +242,55 @@ function persistTaskDefinitions(definitions: TaskDefinition[]) {
   window.localStorage.setItem(TASK_DEFINITIONS_STORAGE_KEY, JSON.stringify(definitions));
 }
 
+function readPortalLogin() {
+  if (typeof window === "undefined") {
+    return { username: "", password: "" } as PortalLoginFormState;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(PORTAL_LOGIN_STORAGE_KEY);
+    if (!raw) {
+      return { username: "", password: "" };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PortalLoginFormState>;
+    return {
+      username: typeof parsed.username === "string" ? parsed.username : "",
+      password: typeof parsed.password === "string" ? parsed.password : ""
+    };
+  } catch {
+    return { username: "", password: "" };
+  }
+}
+
+function persistPortalLogin(credentials: PortalLoginFormState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!credentials.username.trim() && !credentials.password.trim()) {
+    window.sessionStorage.removeItem(PORTAL_LOGIN_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(PORTAL_LOGIN_STORAGE_KEY, JSON.stringify(credentials));
+}
+
 function canManageWorkspace(role: string) {
   return MANAGER_ROLES.has(role);
+}
+
+async function requestVehicleTracking(assetId: string, portalLogin?: PortalLoginFormState | null) {
+  const hasPortalLogin = Boolean(portalLogin?.username.trim() && portalLogin?.password.trim());
+  return apiRequest<VehicleTrackingPayload>(
+    hasPortalLogin ? `assets/${assetId}/tracking/web-login` : `assets/${assetId}/tracking`,
+    hasPortalLogin
+      ? {
+        method: "POST",
+        body: JSON.stringify(portalLogin)
+      }
+      : undefined
+  );
 }
 
 function toDateKey(value: Date) {
@@ -3466,7 +3519,7 @@ export function JobRecordPage({
 }
 
 export function CalendarPage() {
-  const { jobs, users, error, reload } = useJobsAndUsers();
+  const { jobs, users, assets, error, reload } = useJobsAndUsers();
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const current = new Date();
     return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`;
@@ -3478,6 +3531,7 @@ export function CalendarPage() {
     <ProtectedWorkspace allow="tenant" description="Monthly assignment view by employee and scheduled job date." title="Calendar">
       {(session) => (
         <CalendarWorkspace
+          assets={assets}
           calendarMonth={calendarMonth}
           calendarMode={calendarMode}
           error={error}
@@ -3496,6 +3550,7 @@ export function CalendarPage() {
 }
 
 function CalendarWorkspace({
+  assets,
   session,
   jobs,
   reload,
@@ -3508,6 +3563,7 @@ function CalendarWorkspace({
   weekFocusDate,
   setWeekFocusDate
 }: Readonly<{
+  assets: AssetRecord[];
   session: AppSession;
   jobs: JobRecord[];
   reload: () => Promise<void>;
@@ -3529,12 +3585,17 @@ function CalendarWorkspace({
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
+  const [selectedTrackingJobId, setSelectedTrackingJobId] = useState<string | null>(null);
+  const [trackingStates, setTrackingStates] = useState<CalendarVehicleTrackingState[]>([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const [year, month] = calendarMonth.split("-").map((part) => Number(part));
   const firstDayOfMonth = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
   const monthDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
   const operativeUsers = users.filter((user) => user.role === "OPERATIVE");
   const boardUsers = isManager ? operativeUsers : operativeUsers.filter((user) => user.id === session.user.sub);
   const lastDayOfMonth = new Date(year, month - 1, daysInMonth, 23, 59, 59, 999);
@@ -3624,6 +3685,7 @@ function CalendarWorkspace({
 
   const showTeamWeek = !isManager || (selectedEmployeeId === "all" && calendarMode === "team-week");
   const bulkEditJob = bulkEditJobId ? jobs.find((entry) => entry.id === bulkEditJobId) ?? null : null;
+  const selectedTrackingJob = selectedTrackingJobId ? jobs.find((job) => job.id === selectedTrackingJobId) ?? null : null;
 
   function beginBulkEdit(job: JobRecord) {
     setBulkEditJobId(job.id);
@@ -3697,6 +3759,51 @@ function CalendarWorkspace({
     } finally {
       setBulkSaving(false);
     }
+  }
+
+  async function openVehicleTrackingWindow(job: JobRecord) {
+    setSelectedTrackingJobId(job.id);
+    setTrackingError(null);
+    const assignedVehicles = (job.assignedVehicleIds ?? [])
+      .map((vehicleId) => assetsById.get(vehicleId))
+      .filter((asset): asset is AssetRecord => Boolean(asset));
+
+    if (assignedVehicles.length === 0) {
+      setTrackingStates([]);
+      return;
+    }
+
+    setTrackingLoading(true);
+    try {
+      const portalLogin = readPortalLogin();
+      const nextStates = await Promise.all(
+        assignedVehicles.map(async (asset) => {
+          try {
+            const tracking = await requestVehicleTracking(asset.id, portalLogin);
+            return { asset, tracking, error: null } satisfies CalendarVehicleTrackingState;
+          } catch (caughtError) {
+            return {
+              asset,
+              tracking: null,
+              error: caughtError instanceof Error ? caughtError.message : "Tracking unavailable."
+            } satisfies CalendarVehicleTrackingState;
+          }
+        })
+      );
+      setTrackingStates(nextStates);
+      if (nextStates.every((state) => state.error)) {
+        setTrackingError("No live tracking was returned for the assigned vehicles.");
+      }
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  function closeVehicleTrackingWindow() {
+    setSelectedTrackingJobId(null);
+    setTrackingStates([]);
+    setTrackingError(null);
+    setTrackingLoading(false);
   }
 
   return (
@@ -3830,11 +3937,13 @@ function CalendarWorkspace({
                               className="schedule-job-chip"
                               href={jobDetailHref(job.id, "schedule")}
                               onClick={(event) => {
-                                if (!bulkEditJob) {
+                                if (bulkEditJob) {
+                                  event.preventDefault();
                                   return;
                                 }
 
                                 event.preventDefault();
+                                void openVehicleTrackingWindow(job);
                               }}
                               onContextMenu={(event) => {
                                 if (!isManager) {
@@ -3895,6 +4004,10 @@ function CalendarWorkspace({
                             <Link
                               className="jobs-board-chip"
                               href={jobDetailHref(job.id, "schedule")}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                void openVehicleTrackingWindow(job);
+                              }}
                               style={getJobVisualStyle(job, hasCalendarConflict(job, dayKey))}
                               title={`${job.companyJobNumber} - ${job.title}${job.scheduledStartTime && job.scheduledEndTime ? ` (${job.scheduledStartTime}-${job.scheduledEndTime})` : ""}`}
                             >
@@ -3909,6 +4022,68 @@ function CalendarWorkspace({
               </div>
             </div>
           )}
+          {selectedTrackingJob ? (
+            <div
+              onClick={closeVehicleTrackingWindow}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(2, 6, 23, 0.58)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 20,
+                zIndex: 1000
+              }}
+            >
+              <div
+                className="panel"
+                onClick={(event) => event.stopPropagation()}
+                style={{ width: "min(720px, 100%)", padding: 22, maxHeight: "80vh", overflowY: "auto" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 20 }}>{selectedTrackingJob.companyJobNumber}</div>
+                    <div className="muted" style={{ marginTop: 6 }}>{selectedTrackingJob.title}</div>
+                    <div className="muted" style={{ marginTop: 4 }}>{selectedTrackingJob.siteAddress || "No site address set"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <Link className="button button-subtle" href={jobDetailHref(selectedTrackingJob.id, "schedule")}>Open Job</Link>
+                    <button className="button" onClick={closeVehicleTrackingWindow} type="button">Close</button>
+                  </div>
+                </div>
+                <div className="muted" style={{ marginTop: 12 }}>
+                  Assigned vehicles: {(selectedTrackingJob.assignedVehicleIds ?? []).length}
+                </div>
+                <ErrorText error={trackingError} />
+                {trackingLoading ? <div className="callout" style={{ marginTop: 14 }}>Loading live vehicle positions...</div> : null}
+                {!trackingLoading && trackingStates.length === 0 ? (
+                  <div className="callout" style={{ marginTop: 14 }}>No vehicles are assigned to this job yet.</div>
+                ) : null}
+                <div className="stack" style={{ gap: 10, marginTop: 14 }}>
+                  {trackingStates.map((state) => (
+                    <div
+                      key={state.asset.id}
+                      className="panel"
+                      style={{ padding: 14, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{state.asset.name}</div>
+                        <div className="muted">{state.asset.registrationNumber || state.asset.serialNumber}</div>
+                        <div className="muted" style={{ marginTop: 6 }}>{state.tracking?.locationLabel || state.error || "Waiting for location"}</div>
+                        {state.tracking?.lastUpdatedAt ? <div className="muted">Updated: {state.tracking.lastUpdatedAt}</div> : null}
+                      </div>
+                      {state.tracking?.mapUrl ? (
+                        <button className="button" onClick={() => window.open(state.tracking?.mapUrl, "_blank", "noopener,noreferrer")} type="button">
+                          Open Map
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </article>
   );
 }
@@ -4599,8 +4774,10 @@ function AssetManagementWorkspace({
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [syncingVehicles, setSyncingVehicles] = useState(false);
   const [trackingAssetId, setTrackingAssetId] = useState<string | null>(null);
-  const [portalLogin, setPortalLogin] = useState<PortalLoginFormState>({ username: "", password: "" });
+  const [portalLogin, setPortalLogin] = useState<PortalLoginFormState>(() => readPortalLogin());
   const [syncingPortalVehicles, setSyncingPortalVehicles] = useState(false);
+  const [showCreate, setShowCreate] = useState(!kind || kind !== "VEHICLE");
+  const [searchTerm, setSearchTerm] = useState("");
   const emptyForm = {
     name: "",
     serialNumber: "",
@@ -4612,6 +4789,15 @@ function AssetManagementWorkspace({
   };
   const [form, setForm] = useState(emptyForm);
   const isVehicleWorkspace = kind === "VEHICLE";
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleAssets = normalizedSearchTerm
+    ? assets.filter((asset) => (
+      asset.name.toLowerCase().includes(normalizedSearchTerm) ||
+      asset.serialNumber.toLowerCase().includes(normalizedSearchTerm) ||
+      (asset.registrationNumber ?? "").toLowerCase().includes(normalizedSearchTerm) ||
+      (asset.notes ?? "").toLowerCase().includes(normalizedSearchTerm)
+    ))
+    : assets;
 
   async function load() {
     try {
@@ -4637,9 +4823,11 @@ function AssetManagementWorkspace({
   }
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => { persistPortalLogin(portalLogin); }, [portalLogin]);
 
   function beginEdit(asset: AssetRecord) {
     setEditingAssetId(asset.id);
+    setShowCreate(true);
     setForm({
       name: asset.name ?? "",
       serialNumber: asset.serialNumber ?? "",
@@ -4654,6 +4842,9 @@ function AssetManagementWorkspace({
   function resetForm() {
     setEditingAssetId(null);
     setForm(emptyForm);
+    if (isVehicleWorkspace) {
+      setShowCreate(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -4708,16 +4899,7 @@ function AssetManagementWorkspace({
   async function handleTrackVehicle(asset: AssetRecord) {
     try {
       setTrackingAssetId(asset.id);
-      const hasPortalLogin = portalLogin.username.trim() && portalLogin.password.trim();
-      const tracking = await apiRequest<VehicleTrackingPayload>(
-        hasPortalLogin ? `assets/${asset.id}/tracking/web-login` : `assets/${asset.id}/tracking`,
-        hasPortalLogin
-          ? {
-            method: "POST",
-            body: JSON.stringify(portalLogin)
-          }
-          : undefined
-      );
+      const tracking = await requestVehicleTracking(asset.id, portalLogin);
       window.open(tracking.mapUrl, "_blank", "noopener,noreferrer");
       setSuccess(
         tracking.locationLabel
@@ -4763,39 +4945,73 @@ function AssetManagementWorkspace({
 
         return (
           <PanelGrid>
-            <article className="panel" style={{ padding: 24 }}>
-              <h2 style={{ marginTop: 0 }}>{editingAssetId ? `Edit ${itemLabel}` : `Add ${itemLabel}`}</h2>
-              <form className="stack" onSubmit={handleSubmit}>
-                <TextField label={`${itemLabel} name`} onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
-                <TextField label="Serial / asset number" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
-                <TextField label="Registration / tag" onChange={(value) => setForm((current) => ({ ...current, registrationNumber: value }))} value={form.registrationNumber} />
-                <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, assetStatus: value }))} options={["ACTIVE", "IN_SERVICE", "OFF_HIRE", "REPAIR", "RETIRED"]} value={form.assetStatus} />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <TextField label="Last serviced" onChange={(value) => setForm((current) => ({ ...current, lastServicedAt: value }))} type="date" value={form.lastServicedAt} />
-                  <TextField label="Next service due" onChange={(value) => setForm((current) => ({ ...current, nextServiceDueAt: value }))} type="date" value={form.nextServiceDueAt} />
+            {(!isVehicleWorkspace || showCreate || editingAssetId) ? (
+              <article className="panel" style={{ padding: 24 }}>
+                <h2 style={{ marginTop: 0 }}>{editingAssetId ? `Edit ${itemLabel}` : `Add ${itemLabel}`}</h2>
+                <form className="stack" onSubmit={handleSubmit}>
+                  <TextField label={`${itemLabel} name`} onChange={(value) => setForm((current) => ({ ...current, name: value }))} value={form.name} />
+                  <TextField label="Serial / asset number" onChange={(value) => setForm((current) => ({ ...current, serialNumber: value }))} value={form.serialNumber} />
+                  <TextField label="Registration / tag" onChange={(value) => setForm((current) => ({ ...current, registrationNumber: value }))} value={form.registrationNumber} />
+                  <SelectField label="Status" onChange={(value) => setForm((current) => ({ ...current, assetStatus: value }))} options={["ACTIVE", "IN_SERVICE", "OFF_HIRE", "REPAIR", "RETIRED"]} value={form.assetStatus} />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <TextField label="Last serviced" onChange={(value) => setForm((current) => ({ ...current, lastServicedAt: value }))} type="date" value={form.lastServicedAt} />
+                    <TextField label="Next service due" onChange={(value) => setForm((current) => ({ ...current, nextServiceDueAt: value }))} type="date" value={form.nextServiceDueAt} />
+                  </div>
+                  <TextAreaField label="Notes" onChange={(value) => setForm((current) => ({ ...current, notes: value }))} value={form.notes} />
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <button className="button" type="submit">{editingAssetId ? "Save Changes" : `Create ${itemLabel}`}</button>
+                    {(editingAssetId || isVehicleWorkspace) ? <button className="button button-subtle" onClick={resetForm} type="button">Cancel</button> : null}
+                  </div>
+                </form>
+                <ErrorText error={error} />
+                {success ? <div className="callout" style={{ marginTop: 12 }}>{success}</div> : null}
+              </article>
+            ) : (
+              <article className="panel" style={{ padding: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <h2 style={{ margin: 0 }}>Create {itemLabel}</h2>
+                    <div className="muted" style={{ marginTop: 8 }}>Use the button when you need to add a new vehicle without losing list space.</div>
+                  </div>
+                  <button className="button" onClick={() => setShowCreate(true)} type="button">Create {itemLabel}</button>
                 </div>
-                <TextAreaField label="Notes" onChange={(value) => setForm((current) => ({ ...current, notes: value }))} value={form.notes} />
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button className="button" type="submit">{editingAssetId ? "Save Changes" : `Create ${itemLabel}`}</button>
-                  {editingAssetId ? <button className="button button-subtle" onClick={resetForm} type="button">Cancel Edit</button> : null}
-                </div>
-              </form>
-              <ErrorText error={error} />
-              {success ? <div className="callout" style={{ marginTop: 12 }}>{success}</div> : null}
-            </article>
+                <ErrorText error={error} />
+                {success ? <div className="callout" style={{ marginTop: 12 }}>{success}</div> : null}
+              </article>
+            )}
             <article className="panel" style={{ padding: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <h2 style={{ marginTop: 0, marginBottom: 0 }}>{title}</h2>
-                {isVehicleWorkspace ? (
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button className="button button-subtle" disabled={syncingVehicles} onClick={() => void handleImportVehicles()} type="button">
-                      {syncingVehicles ? "Syncing..." : "Import From API"}
-                    </button>
-                    <button className="button" disabled={syncingPortalVehicles} onClick={() => void handleImportVehiclesFromWebLogin()} type="button">
-                      {syncingPortalVehicles ? "Signing In..." : "Import Using Web Login"}
-                    </button>
+                <div>
+                  <h2 style={{ marginTop: 0, marginBottom: 0 }}>{title}</h2>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    {normalizedSearchTerm
+                      ? `Showing ${visibleAssets.length} matching ${itemLabel}${visibleAssets.length === 1 ? "" : "s"}.`
+                      : `Showing ${visibleAssets.length} ${itemLabel}${visibleAssets.length === 1 ? "" : "s"}.`}
                   </div>
-                ) : null}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                  <label className="field" style={{ minWidth: 240 }}>
+                    <span>Search {title.toLowerCase()}</span>
+                    <input
+                      className="input"
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder={`Search ${itemLabel} name, number, or notes`}
+                      type="search"
+                      value={searchTerm}
+                    />
+                  </label>
+                  {isVehicleWorkspace ? <button className="button button-subtle" onClick={() => setShowCreate(true)} type="button">Create Vehicle</button> : null}
+                  {isVehicleWorkspace ? (
+                    <>
+                      <button className="button button-subtle" disabled={syncingVehicles} onClick={() => void handleImportVehicles()} type="button">
+                        {syncingVehicles ? "Syncing..." : "Import From API"}
+                      </button>
+                      <button className="button" disabled={syncingPortalVehicles} onClick={() => void handleImportVehiclesFromWebLogin()} type="button">
+                        {syncingPortalVehicles ? "Signing In..." : "Import Using Web Login"}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </div>
               {isVehicleWorkspace ? (
                 <>
@@ -4818,20 +5034,22 @@ function AssetManagementWorkspace({
                 </>
               ) : null}
               <div className="stack">
-                {assets.length === 0 ? <div className="muted">{emptyMessage}</div> : null}
-                {assets.map((asset) => (
-                  <div key={asset.id} className="panel" style={{ padding: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                {visibleAssets.length === 0 ? <div className="muted">{normalizedSearchTerm ? `No ${itemLabel}s match that search.` : emptyMessage}</div> : null}
+                {visibleAssets.map((asset) => (
+                  <div key={asset.id} className="panel" style={{ padding: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                       <div>
                         <div style={{ fontWeight: 700 }}>{asset.name}</div>
                         <div className="muted">{asset.registrationNumber || asset.serialNumber}</div>
                       </div>
                       <div className="badge">{asset.assetStatus ?? "ACTIVE"}</div>
                     </div>
-                    <div className="muted" style={{ marginTop: 10 }}>Last service: {formatDateLabel(asset.lastServicedAt)}</div>
-                    <div className="muted">Next service due: {formatDateLabel(asset.nextServiceDueAt)}</div>
-                    {asset.notes ? <div style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{asset.notes}</div> : null}
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
+                      <div className="muted">Last service: {formatDateLabel(asset.lastServicedAt)}</div>
+                      <div className="muted">Next due: {formatDateLabel(asset.nextServiceDueAt)}</div>
+                    </div>
+                    {asset.notes ? <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{asset.notes}</div> : null}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
                       {isVehicleWorkspace ? (
                         <button
                           className="button"

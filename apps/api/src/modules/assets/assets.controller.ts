@@ -4,7 +4,7 @@ import type { JwtUser } from "@tna-nexus/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { AssetsService } from "./assets.service";
-import { CreateAssetDto, UpdateAssetDto } from "./assets.dto";
+import { CreateAssetDto, CrystalBallWebLoginDto, UpdateAssetDto } from "./assets.dto";
 
 @ApiTags("assets")
 @ApiBearerAuth()
@@ -23,9 +23,19 @@ export class AssetsController {
     return this.service.importVehicles(user);
   }
 
+  @Post("import-vehicles/web-login")
+  importVehiclesFromWebLogin(@CurrentUser() user: JwtUser, @Body() body: CrystalBallWebLoginDto) {
+    return this.service.importVehiclesFromWebLogin(user, body.username, body.password);
+  }
+
   @Get(":assetId/tracking")
   getTracking(@CurrentUser() user: JwtUser, @Param("assetId") assetId: string) {
     return this.service.getTracking(user, assetId);
+  }
+
+  @Post(":assetId/tracking/web-login")
+  getTrackingFromWebLogin(@CurrentUser() user: JwtUser, @Param("assetId") assetId: string, @Body() body: CrystalBallWebLoginDto) {
+    return this.service.getTrackingFromWebLogin(user, assetId, body.username, body.password);
   }
 
   @Post()

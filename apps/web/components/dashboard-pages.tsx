@@ -185,6 +185,10 @@ interface VehicleTrackingPayload {
   imei: string | null;
 }
 
+interface PortalLoginFormState {
+  username: string;
+  password: string;
+}
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
 const TASK_DEFINITIONS_STORAGE_KEY = "tna-task-definitions";
 const DEFAULT_TASK_DEFINITIONS: TaskDefinition[] = [
@@ -4585,6 +4589,8 @@ function AssetManagementWorkspace({
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [syncingVehicles, setSyncingVehicles] = useState(false);
   const [trackingAssetId, setTrackingAssetId] = useState<string | null>(null);
+  const [portalLogin, setPortalLogin] = useState<PortalLoginFormState>({ username: "", password: "" });
+  const [syncingPortalVehicles, setSyncingPortalVehicles] = useState(false);
   const emptyForm = {
     name: "",
     serialNumber: "",
@@ -4692,7 +4698,16 @@ function AssetManagementWorkspace({
   async function handleTrackVehicle(asset: AssetRecord) {
     try {
       setTrackingAssetId(asset.id);
-      const tracking = await apiRequest<VehicleTrackingPayload>(`assets/${asset.id}/tracking`);
+      const hasPortalLogin = portalLogin.username.trim() && portalLogin.password.trim();
+      const tracking = await apiRequest<VehicleTrackingPayload>(
+        hasPortalLogin ? `assets/${asset.id}/tracking/web-login` : `assets/${asset.id}/tracking`,
+        hasPortalLogin
+          ? {
+            method: "POST",
+            body: JSON.stringify(portalLogin)
+          }
+          : undefined
+      );
       window.open(tracking.mapUrl, "_blank", "noopener,noreferrer");
       setSuccess(
         tracking.locationLabel
@@ -4707,6 +4722,27 @@ function AssetManagementWorkspace({
     }
   }
 
+  async function handleImportVehiclesFromWebLogin() {
+    if (!portalLogin.username.trim() || !portalLogin.password.trim()) {
+      setError("Enter your Crystal Ball username and password first.");
+      return;
+    }
+
+    try {
+      setSyncingPortalVehicles(true);
+      const result = await apiRequest<VehicleImportResult>("assets/import-vehicles/web-login", {
+        method: "POST",
+        body: JSON.stringify(portalLogin)
+      });
+      setSuccess(`Imported ${result.totalDevices} vehicles from the Crystal Ball website. Created ${result.created} and updated ${result.updated}.`);
+      setError(null);
+      await load();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Failed to import vehicles from the Crystal Ball website.");
+    } finally {
+      setSyncingPortalVehicles(false);
+    }
+  }
   return (
     <ProtectedWorkspace allow="tenant" description={description} title={title}>
       {(session) => {
@@ -4741,15 +4777,35 @@ function AssetManagementWorkspace({
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <h2 style={{ marginTop: 0, marginBottom: 0 }}>{title}</h2>
                 {isVehicleWorkspace ? (
-                  <button className="button button-subtle" disabled={syncingVehicles} onClick={() => void handleImportVehicles()} type="button">
-                    {syncingVehicles ? "Syncing..." : "Import From Tracking"}
-                  </button>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button className="button button-subtle" disabled={syncingVehicles} onClick={() => void handleImportVehicles()} type="button">
+                      {syncingVehicles ? "Syncing..." : "Import From API"}
+                    </button>
+                    <button className="button" disabled={syncingPortalVehicles} onClick={() => void handleImportVehiclesFromWebLogin()} type="button">
+                      {syncingPortalVehicles ? "Signing In..." : "Import Using Web Login"}
+                    </button>
+                  </div>
                 ) : null}
               </div>
               {isVehicleWorkspace ? (
-                <div className="muted" style={{ marginTop: 10 }}>
-                  Pull the latest Crystal Ball device list into your vehicle records, then use Track to open a live map.
-                </div>
+                <>
+                  <div className="muted" style={{ marginTop: 10 }}>
+                    Use your Crystal Ball website login for this session to import vehicles and open live tracking, without saving those credentials in TNA-Nexus.
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+                    <TextField
+                      label="Crystal Ball username"
+                      onChange={(value) => setPortalLogin((current) => ({ ...current, username: value }))}
+                      value={portalLogin.username}
+                    />
+                    <TextField
+                      label="Crystal Ball password"
+                      onChange={(value) => setPortalLogin((current) => ({ ...current, password: value }))}
+                      type="password"
+                      value={portalLogin.password}
+                    />
+                  </div>
+                </>
               ) : null}
               <div className="stack">
                 {assets.length === 0 ? <div className="muted">{emptyMessage}</div> : null}

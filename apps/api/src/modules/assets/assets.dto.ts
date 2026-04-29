@@ -42,3 +42,13 @@ export class CreateAssetDto {
 }
 
 export class UpdateAssetDto extends PartialType(CreateAssetDto) {}
+
+export class CrystalBallWebLoginDto {
+  @ApiProperty()
+  @IsString()
+  username!: string;
+
+  @ApiProperty()
+  @IsString()
+  password!: string;
+}

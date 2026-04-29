@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env}"
 INSTALL_DEPS="${INSTALL_DEPS:-yes}"
 BUILD_APPS="${BUILD_APPS:-yes}"
+INSTALL_SYSTEM_DEPS="${INSTALL_SYSTEM_DEPS:-yes}"
 OVERWRITE_ENV="${OVERWRITE_ENV:-no}"
 POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
@@ -32,6 +33,7 @@ Usage:
 Optional environment variables:
   INSTALL_DEPS=yes|no
   BUILD_APPS=yes|no
+  INSTALL_SYSTEM_DEPS=yes|no
   OVERWRITE_ENV=yes|no
   ENV_FILE=/path/to/.env
   POSTGRES_HOST=127.0.0.1
@@ -44,7 +46,7 @@ Optional environment variables:
   DEMO_COMPANY_DB_PASSWORD='ChangeMeTenant123!'
 
 This script prepares a local test install only.
-It does not configure systemd, nginx, certbot, sudo users, or background services.
+It does not configure app systemd services, nginx, certbot, sudo users, or app background services.
 EOF
 }
 
@@ -60,6 +62,39 @@ require_command() {
     echo "Missing required command: ${cmd}"
     echo "${hint}"
     exit 1
+  fi
+}
+
+install_ubuntu_packages() {
+  if [[ "${INSTALL_SYSTEM_DEPS}" != "yes" ]]; then
+    return
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ ! -f /etc/debian_version ]]; then
+    return
+  fi
+
+  echo "Installing local test prerequisites..."
+  sudo apt update
+  sudo apt install -y curl git openssl build-essential postgresql postgresql-contrib
+
+  if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.split(\".\")[0]')" -lt 22 ]]; then
+    echo "Installing Node.js 22..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt install -y nodejs
+  fi
+
+  if ! command -v pnpm >/dev/null 2>&1 && ! command -v corepack >/dev/null 2>&1; then
+    echo "Installing pnpm..."
+    sudo npm install -g pnpm@10.8.1
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl start postgresql || true
   fi
 }
 
@@ -100,6 +135,8 @@ EOF
 }
 
 echo "Preparing local test install in ${REPO_ROOT}"
+
+install_ubuntu_packages
 
 require_command "openssl" "Install OpenSSL and rerun the script."
 require_command "node" "Install Node.js 22 or newer and rerun the script."
@@ -189,6 +226,9 @@ fi
 cat <<'EOF'
 
 Local test install complete.
+
+Clean it back out with:
+  bash purge-lite.sh
 
 Manual test commands:
   pnpm --filter @tna-nexus/api dev

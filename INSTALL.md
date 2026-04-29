@@ -48,6 +48,7 @@ POSTGRES_PASSWORD=postgres OVERWRITE_ENV=yes BUILD_APPS=yes bash install-lite.sh
 ```
 
 This script:
+- installs local test prerequisites on Ubuntu when needed
 - writes a local `.env` if one does not already exist
 - ensures the platform database exists
 - installs dependencies
@@ -69,4 +70,16 @@ Or start them separately:
 ```bash
 pnpm --filter @tna-nexus/api dev
 pnpm --filter @tna-nexus/web dev
+```
+
+When you are finished testing, remove the local test setup with:
+
+```bash
+bash purge-lite.sh
+```
+
+Optional full cleanup including PostgreSQL/Node packages that were installed just for testing:
+
+```bash
+REMOVE_SYSTEM_DEPS=yes bash purge-lite.sh
 ```

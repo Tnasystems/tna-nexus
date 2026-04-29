@@ -2482,7 +2482,6 @@ export function JobRecordPage({
           quotation,
           quotationRevisions,
           finalMeasure,
-          tasks: jobTasks,
           scheduledFor: rangeStart ? `${rangeStart}T00:00:00` : undefined,
           scheduledTo: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
           scheduledStartTime: form.scheduledStartTime || undefined,

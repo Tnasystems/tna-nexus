@@ -141,6 +141,16 @@ export class AssetsService {
         .map((asset) => [readPortalDeviceId(asset.notes), asset] as const)
         .filter((entry): entry is [string, typeof existingVehicles[number]] => Boolean(entry[0]))
     );
+    const bySerial = new Map(
+      existingVehicles
+        .map((asset) => [normalizeVehicleKey(asset.serialNumber), asset] as const)
+        .filter((entry): entry is [string, typeof existingVehicles[number]] => Boolean(entry[0]))
+    );
+    const byRegistration = new Map(
+      existingVehicles
+        .map((asset) => [normalizeVehicleKey(asset.registrationNumber), asset] as const)
+        .filter((entry): entry is [string, typeof existingVehicles[number]] => Boolean(entry[0]))
+    );
     const byName = new Map(existingVehicles.map((asset) => [asset.name.trim().toLowerCase(), asset]));
 
     let created = 0;
@@ -153,8 +163,15 @@ export class AssetsService {
         continue;
       }
 
-      const existing = byPortalId.get(deviceId) ?? byName.get(deviceName.toLowerCase()) ?? null;
       const registrationNumber = extractRegistration(deviceName);
+      const registrationKey = normalizeVehicleKey(registrationNumber);
+      const webSerial = `CBWEB-${deviceId}`;
+      const serialKey = normalizeVehicleKey(webSerial);
+      const existing = byPortalId.get(deviceId)
+        ?? bySerial.get(serialKey)
+        ?? (registrationKey ? byRegistration.get(registrationKey) : null)
+        ?? byName.get(deviceName.toLowerCase())
+        ?? null;
       const notes = mergePortalTrackingNote(existing?.notes ?? "", item);
 
       if (existing) {
@@ -168,20 +185,32 @@ export class AssetsService {
             notes
           }
         });
+        byPortalId.set(deviceId, existing);
+        bySerial.set(serialKey, existing);
+        if (registrationKey) {
+          byRegistration.set(registrationKey, existing);
+        }
+        byName.set(deviceName.toLowerCase(), existing);
         updated += 1;
         continue;
       }
 
-      await prisma.asset.create({
+      const createdAsset = await prisma.asset.create({
         data: {
           id: randomUUID(),
           name: deviceName,
-          serialNumber: `CBWEB-${deviceId}`,
+          serialNumber: webSerial,
           registrationNumber,
           kind: "VEHICLE",
           notes
         }
       });
+      byPortalId.set(deviceId, createdAsset);
+      bySerial.set(serialKey, createdAsset);
+      if (registrationKey) {
+        byRegistration.set(registrationKey, createdAsset);
+      }
+      byName.set(deviceName.toLowerCase(), createdAsset);
       created += 1;
     }
 
@@ -346,4 +375,8 @@ function readPortalDeviceId(notes: string | null | undefined) {
 function extractRegistration(deviceName: string) {
   const firstPart = deviceName.split(" - ")[0]?.trim();
   return firstPart || null;
+}
+
+function normalizeVehicleKey(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
 }

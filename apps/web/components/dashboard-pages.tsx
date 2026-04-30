@@ -204,9 +204,14 @@ interface CalendarVehicleTrackingState {
   error: string | null;
   tracking: VehicleTrackingPayload | null;
 }
+interface VehicleTrackingSummary {
+  status: "MOVING" | "IDLE" | "OFF";
+  tracking: VehicleTrackingPayload | null;
+}
 const MANAGER_ROLES = new Set(["PLATFORM_ADMIN", "DIRECTOR", "MANAGER"]);
 const TASK_DEFINITIONS_STORAGE_KEY = "tna-task-definitions";
 const PORTAL_LOGIN_STORAGE_KEY = "tna-crystal-ball-login";
+const VEHICLE_TRACKING_REFRESH_MS = 60_000;
 const DEFAULT_TASK_DEFINITIONS: TaskDefinition[] = [
   {
     id: "ppe",
@@ -300,6 +305,44 @@ function buildMiniMapEmbedUrl(latitude: number, longitude: number) {
   const top = latitude + delta;
   const bottom = latitude - delta;
   return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${latitude}%2C${longitude}`;
+}
+
+function parseTrackingTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function deriveVehicleLiveStatus(tracking: VehicleTrackingPayload | null) {
+  if (!tracking) {
+    return "OFF" as const;
+  }
+
+  if ((tracking.speedKph ?? 0) > 5) {
+    return "MOVING" as const;
+  }
+
+  const lastUpdated = parseTrackingTimestamp(tracking.lastUpdatedAt);
+  if (!lastUpdated) {
+    return "OFF" as const;
+  }
+
+  return Date.now() - lastUpdated.getTime() > 30 * 60 * 1000 ? "OFF" : "IDLE";
+}
+
+function getVehicleStatusAppearance(status: "MOVING" | "IDLE" | "OFF") {
+  if (status === "MOVING") {
+    return { label: "Moving", background: "rgba(34, 197, 94, 0.18)", color: "#bbf7d0" };
+  }
+
+  if (status === "IDLE") {
+    return { label: "Idle", background: "rgba(245, 158, 11, 0.18)", color: "#fde68a" };
+  }
+
+  return { label: "Off", background: "rgba(148, 163, 184, 0.18)", color: "#e2e8f0" };
 }
 
 function toDateKey(value: Date) {
@@ -3772,6 +3815,11 @@ function CalendarWorkspace({
   async function openVehicleTrackingWindow(job: JobRecord) {
     setSelectedTrackingJobId(job.id);
     setTrackingError(null);
+    setTrackingStates([]);
+    await refreshTrackingWindow(job);
+  }
+
+  async function refreshTrackingWindow(job: JobRecord) {
     const assignedVehicles = (job.assignedVehicleIds ?? [])
       .map((vehicleId) => assetsById.get(vehicleId))
       .filter((asset): asset is AssetRecord => Boolean(asset));
@@ -3813,6 +3861,18 @@ function CalendarWorkspace({
     setTrackingError(null);
     setTrackingLoading(false);
   }
+
+  useEffect(() => {
+    if (!selectedTrackingJob) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshTrackingWindow(selectedTrackingJob);
+    }, VEHICLE_TRACKING_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [selectedTrackingJob, assets]);
 
   return (
     <article className="panel" style={{ padding: 24 }}>
@@ -4070,13 +4130,25 @@ function CalendarWorkspace({
                 ) : null}
                 <div className="stack" style={{ gap: 10, marginTop: 14 }}>
                   {trackingStates.map((state) => (
+                    (() => {
+                      const liveStatus = deriveVehicleLiveStatus(state.tracking);
+                      const statusAppearance = getVehicleStatusAppearance(liveStatus);
+                      return (
                     <div
                       key={state.asset.id}
                       className="panel"
                       style={{ padding: 14, display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 14, alignItems: "start" }}
                     >
                       <div>
-                        <div style={{ fontWeight: 700 }}>{state.asset.name}</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 700 }}>{state.asset.name}</div>
+                          <div
+                            className="badge"
+                            style={{ background: statusAppearance.background, color: statusAppearance.color, border: "1px solid rgba(255,255,255,0.08)" }}
+                          >
+                            {statusAppearance.label}
+                          </div>
+                        </div>
                         <div className="muted">{state.asset.registrationNumber || state.asset.serialNumber}</div>
                         <div className="muted" style={{ marginTop: 6 }}>{state.tracking?.locationLabel || state.error || "Waiting for location"}</div>
                         {state.tracking?.lastUpdatedAt ? <div className="muted">Updated: {state.tracking.lastUpdatedAt}</div> : null}
@@ -4107,6 +4179,8 @@ function CalendarWorkspace({
                         )}
                       </div>
                     </div>
+                      );
+                    })()
                   ))}
                 </div>
               </div>
@@ -4806,6 +4880,7 @@ function AssetManagementWorkspace({
   const [syncingPortalVehicles, setSyncingPortalVehicles] = useState(false);
   const [showCreate, setShowCreate] = useState(!kind || kind !== "VEHICLE");
   const [searchTerm, setSearchTerm] = useState("");
+  const [vehicleTrackingById, setVehicleTrackingById] = useState<Record<string, VehicleTrackingSummary>>({});
   const emptyForm = {
     name: "",
     serialNumber: "",
@@ -4852,6 +4927,41 @@ function AssetManagementWorkspace({
 
   useEffect(() => { void load(); }, []);
   useEffect(() => { persistPortalLogin(portalLogin); }, [portalLogin]);
+
+  useEffect(() => {
+    if (!isVehicleWorkspace || assets.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshVehicleStatuses() {
+      const nextEntries = await Promise.all(
+        assets.map(async (asset) => {
+          try {
+            const tracking = await requestVehicleTracking(asset.id, portalLogin);
+            return [asset.id, { tracking, status: deriveVehicleLiveStatus(tracking) }] as const;
+          } catch {
+            return [asset.id, { tracking: null, status: "OFF" as const }] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setVehicleTrackingById(Object.fromEntries(nextEntries));
+      }
+    }
+
+    void refreshVehicleStatuses();
+    const intervalId = window.setInterval(() => {
+      void refreshVehicleStatuses();
+    }, VEHICLE_TRACKING_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [assets, isVehicleWorkspace, portalLogin]);
 
   function beginEdit(asset: AssetRecord) {
     setEditingAssetId(asset.id);
@@ -5065,17 +5175,36 @@ function AssetManagementWorkspace({
                 {visibleAssets.length === 0 ? <div className="muted">{normalizedSearchTerm ? `No ${itemLabel}s match that search.` : emptyMessage}</div> : null}
                 {visibleAssets.map((asset) => (
                   <div key={asset.id} className="panel" style={{ padding: 12 }}>
+                    {(() => {
+                      const liveStatus = vehicleTrackingById[asset.id]?.status ?? "OFF";
+                      const statusAppearance = getVehicleStatusAppearance(liveStatus);
+                      return (
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                       <div>
                         <div style={{ fontWeight: 700 }}>{asset.name}</div>
                         <div className="muted">{asset.registrationNumber || asset.serialNumber}</div>
                       </div>
-                      <div className="badge">{asset.assetStatus ?? "ACTIVE"}</div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <div
+                          className="badge"
+                          style={{ background: statusAppearance.background, color: statusAppearance.color, border: "1px solid rgba(255,255,255,0.08)" }}
+                        >
+                          {statusAppearance.label}
+                        </div>
+                        <div className="badge">{asset.assetStatus ?? "ACTIVE"}</div>
+                      </div>
                     </div>
+                      );
+                    })()}
                     <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
                       <div className="muted">Last service: {formatDateLabel(asset.lastServicedAt)}</div>
                       <div className="muted">Next due: {formatDateLabel(asset.nextServiceDueAt)}</div>
                     </div>
+                    {vehicleTrackingById[asset.id]?.tracking?.lastUpdatedAt ? (
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        Live update: {vehicleTrackingById[asset.id]?.tracking?.lastUpdatedAt}
+                      </div>
+                    ) : null}
                     {asset.notes ? <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{asset.notes}</div> : null}
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
                       {isVehicleWorkspace ? (
